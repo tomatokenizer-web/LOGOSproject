@@ -27,8 +27,9 @@ model User {
   thetaSyntactic  Float    @default(0)
   thetaPragmatic  Float    @default(0)
 
-  goals    GoalSpec[]
-  sessions Session[]
+  goals              GoalSpec[]
+  sessions           Session[]
+  componentErrorStats ComponentErrorStats[]
 }
 
 model GoalSpec {
@@ -70,12 +71,30 @@ model LanguageObject {
   content     String  // The actual word/pattern/rule
   contentJson String? // Full vector representation (JSON string for SQLite)
 
-  // FRE Metrics (computed from corpus)
-  frequency            Float // F: 0-1 normalized
-  relationalDensity    Float // R: hub score
-  contextualContribution Float // E: meaning importance
+  // ========== Five-Element Feature Vector z(w) ==========
+  // F: Frequency (0-1 normalized, log-scale)
+  frequency Float
 
-  // Computed priority (denormalized for query speed)
+  // R: Relational Density (hub score, PMI-weighted centrality)
+  relationalDensity Float
+
+  // E: Contextual Contribution (legacy, kept for compatibility)
+  contextualContribution Float
+
+  // D: Domain Distribution Vector
+  // JSON string: {"news": 0.1, "medical": 0.8, "business": 0.05, ...}
+  domainDistribution String?
+
+  // M: Morphological Composition Score
+  // Computed as: familySize * productivity * log(familyFrequencySum)
+  morphologicalScore Float?
+
+  // P: Phonological Difficulty/Constraint
+  // Computed as: g2pEntropy + syllableComplexity + errorPronePatterns
+  phonologicalDifficulty Float?
+
+  // ========== Computed Values ==========
+  // Computed priority using S_eff formula
   priority Float @default(0)
 
   // IRT parameters
@@ -85,13 +104,16 @@ model LanguageObject {
   goalId String
   goal   GoalSpec @relation(fields: [goalId], references: [id], onDelete: Cascade)
 
-  masteryState MasteryState?
-  responses    Response[]
-  collocations Collocation[] @relation("word1")
-  collocatedBy Collocation[] @relation("word2")
+  masteryState    MasteryState?
+  responses       Response[]
+  collocations    Collocation[] @relation("word1")
+  collocatedBy    Collocation[] @relation("word2")
+  errorAnalyses   ErrorAnalysis[]
 
   @@index([goalId, type])
   @@index([goalId, priority(sort: Desc)])
+  @@index([goalId, morphologicalScore])
+  @@index([goalId, phonologicalDifficulty])
 }
 
 model Collocation {
@@ -242,4 +264,70 @@ model CachedTask {
 
   @@unique([objectId, taskType, taskFormat])
   @@index([expiresAt])
+}
+
+// ========== ERROR ANALYSIS ==========
+
+model ErrorAnalysis {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  // The response this analysis belongs to
+  responseId String @unique
+
+  // Component classification (PHON, MORPH, LEX, SYNT, PRAG)
+  component String
+
+  // Error type and details
+  errorType   String
+  explanation String
+  correction  String
+
+  // Similar errors (JSON array)
+  similarErrors String? // JSON string for SQLite compatibility
+
+  // Confidence score (0-1)
+  confidence Float @default(0.8)
+
+  // Source of analysis
+  source String @default("claude") // 'claude', 'rule_based', 'hybrid'
+
+  // Links
+  objectId String
+  object   LanguageObject @relation(fields: [objectId], references: [id], onDelete: Cascade)
+
+  @@index([objectId, component])
+  @@index([component, createdAt(sort: Desc)])
+}
+
+// ========== COMPONENT ERROR STATS ==========
+
+model ComponentErrorStats {
+  id        String   @id @default(uuid())
+  updatedAt DateTime @updatedAt
+
+  // Component this stat is for
+  component String // PHON, MORPH, LEX, SYNT, PRAG
+
+  // Error counts
+  totalErrors    Int @default(0)
+  recentErrors   Int @default(0) // Last 7 days
+
+  // Error rate (0-1)
+  errorRate Float @default(0)
+
+  // Trend: positive = getting worse, negative = improving
+  trend Float @default(0)
+
+  // Recommendation for this component
+  recommendation String?
+
+  // User or goal this belongs to
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  goalId String?
+
+  @@unique([userId, component, goalId])
+  @@index([userId, errorRate(sort: Desc)])
 }

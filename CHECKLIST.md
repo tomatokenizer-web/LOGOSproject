@@ -10,27 +10,30 @@
 *Get the app running with basic structure*
 
 ### 1.1 Project Setup
-- [ ] **Create project directory structure** - Folders for main, renderer, core, shared
+- [x] **Create project directory structure** - Folders for main, renderer, core, shared
 - [ ] **Initialize from Electron+React template** - Clone guasam/electron-react-app as base
-- [ ] **Configure TypeScript strict mode** - Catch errors at compile time
+- [x] **Configure TypeScript strict mode** - tsconfig.json with strict: true
 - [ ] **Set up ESLint + Prettier** - Consistent code style across all files
 - [ ] **Initialize Git repository** - Version control from day one
-- [ ] **Create .env.example** - Template for API keys (never commit real keys)
+- [x] **Create .env.example** - Template for API keys (never commit real keys)
 
 ### 1.2 Database Layer
-- [ ] **Install Prisma + better-sqlite3** - Database ORM and SQLite driver
-- [ ] **Create schema.prisma** - Copy from ALGORITHMIC-FOUNDATIONS.md Part 4
+- [x] **Install Prisma + better-sqlite3** - Added to package.json dependencies
+- [x] **Create schema.prisma** - Extended with z(w) vector fields (D, M, P)
 - [ ] **Run initial migration** - Generate database tables
 - [ ] **Test CRUD operations** - Verify data persists across app restarts
 - [ ] **Add seed data script** - Sample goals and language objects for testing
 
 ### 1.3 Core Algorithms (Pure TypeScript)
-- [ ] **Create /src/core/types.ts** - Shared type definitions
-- [ ] **Implement irt.ts** - θ estimation, probability functions (Part 1)
-- [ ] **Implement pmi.ts** - PMI calculation, difficulty mapping (Part 2)
-- [ ] **Implement fsrs.ts** - Spaced repetition scheduling (Part 3)
-- [ ] **Implement priority.ts** - FRE calculation, queue sorting
-- [ ] **Implement bottleneck.ts** - Error pattern analysis (Part 7)
+- [x] **Create /src/core/types.ts** - Shared type definitions (1244 lines)
+- [x] **Implement irt.ts** - θ estimation, probability functions (Part 1)
+- [x] **Implement pmi.ts** - PMI calculation, difficulty mapping (Part 2)
+- [x] **Implement fsrs.ts** - Spaced repetition scheduling (Part 3)
+- [x] **Implement priority.ts** - FRE calculation, queue sorting
+- [x] **Implement bottleneck.ts** - Error pattern analysis (Part 7)
+- [x] **Implement g2p.ts** - Grapheme-phoneme correspondence (Gap 1.7, 1.9)
+- [x] **Implement morphology.ts** - Morphological analysis (Gap 1.8)
+- [x] **Implement syntactic.ts** - Syntactic pattern analysis
 - [ ] **Write unit tests for each** - 100% coverage on pure functions
 
 ### 1.4 IPC Bridge
@@ -55,30 +58,30 @@
 *Store and retrieve all learning data correctly*
 
 ### 2.1 Goal Management
-- [ ] **Create goal from user input** - Parse natural language or dropdown selection
-- [ ] **Store GoalSpec in database** - All goal dimensions saved
+- [x] **Create goal from user input** - goal.repository.ts: createGoal()
+- [x] **Store GoalSpec in database** - Full CRUD in goal.repository.ts
 - [ ] **Extract vocabulary from goal** - Claude analyzes domain corpus
-- [ ] **Generate LanguageObjects** - Create items with F, R, E metrics
-- [ ] **Calculate initial priorities** - Sort learning queue
+- [x] **Generate LanguageObjects** - addLanguageObjectsToGoal() with z(w) vector
+- [x] **Calculate initial priorities** - bulkUpdatePriorities()
 
 ### 2.2 Mastery State Tracking
-- [ ] **Initialize MasteryState for each object** - Stage 0, empty FSRS card
-- [ ] **Update state on response** - Stage transitions, accuracy tracking
-- [ ] **Track cue-free vs cue-assisted** - Separate accuracy metrics
-- [ ] **Calculate scaffolding gap** - Difference between assisted/free
-- [ ] **Schedule next reviews** - FSRS determines intervals
+- [x] **Initialize MasteryState for each object** - bulkCreateMasteryStates()
+- [x] **Update state on response** - updateMasteryState(), transitionStage()
+- [x] **Track cue-free vs cue-assisted** - recordExposure() with EMA
+- [x] **Calculate scaffolding gap** - getScaffoldingGap()
+- [x] **Schedule next reviews** - updateFSRSParameters(), getReviewQueue()
 
 ### 2.3 Session Recording
-- [ ] **Start session with mode** - Learning, Training, or Evaluation
-- [ ] **Log each response** - Task type, correct/incorrect, time, cue level
-- [ ] **Apply θ rules by mode** - Freeze, soft-track, or IRT-update
-- [ ] **End session with summary** - Items practiced, transitions, bottlenecks
-- [ ] **Store θ snapshots** - History of ability estimates
+- [x] **Start session with mode** - createSession() with mode param
+- [x] **Log each response** - recordResponse() with full metadata
+- [x] **Apply θ rules by mode** - applyThetaRules() (freeze/soft/full)
+- [x] **End session with summary** - getSessionSummary()
+- [x] **Store θ snapshots** - saveThetaSnapshot()
 
 ### 2.4 Collocation Storage
-- [ ] **Store PMI pairs** - Word relationships with significance
-- [ ] **Query collocations by word** - Get related words for task generation
-- [ ] **Update on new content** - Recalculate when corpus expands
+- [x] **Store PMI pairs** - createCollocation(), bulkCreateCollocations()
+- [x] **Query collocations by word** - getCollocationsForWord() with PMI filter
+- [x] **Update on new content** - recalculateRelationalDensities()
 
 **CHECKPOINT 2: Data persists correctly, learning queue sorts by priority**
 
@@ -174,6 +177,52 @@
 
 ---
 
+## Phase 4B: Gap Implementations (from GAPS-AND-CONNECTIONS.md)
+*Extended algorithms for language learning system*
+
+### Gap 4.1: Grammar Organization Algorithm
+- [x] **Define SyntacticConstruction interface** - 20+ English grammar patterns
+- [x] **Create syntactic-construction.ts** - CORE_CONSTRUCTIONS library with complexity metrics
+- [x] **Implement grammar-sequence-optimizer.ts** - Topological sort with prerequisites
+- [x] **Create grammar/index.ts** - Barrel exports
+
+### Gap 4.2: Domain/Register Structure
+- [x] **Define RegisterProfile interface** - Formality levels, genres, linguistic features
+- [x] **Create register-profile.ts** - REGISTER_PROFILES library (academic, business, legal, etc.)
+- [x] **Implement register-calculator.ts** - Word-register fit scoring, text analysis
+- [x] **Create register/index.ts** - Barrel exports
+
+### Gap 4.3: Component-Object State Dictionary
+- [x] **Define ComponentObjectState interface** - Unified learning state tracking
+- [x] **Create component-object-state.ts** - Exposure history, IRT metrics, transfer effects
+- [x] **Implement component-search-engine.ts** - Search/filter engine with priority lists
+- [x] **Create state/index.ts** - Barrel exports
+
+### Gap 4.5: Content Sourcing & Generation
+- [x] **Define PedagogicalIntent type** - 9 intent types for learning tasks
+- [x] **Create pedagogical-intent.ts** - Intent definitions and mappings
+- [x] **Define ContentSpec interface** - Length, format, difficulty constraints
+- [x] **Create content-spec.ts** - Content specification types
+- [x] **Implement content-generator.ts** - Claude API integration for content generation
+- [x] **Implement content-validator.ts** - Linguistic benchmark validation
+- [x] **Create content/index.ts** - Barrel exports
+
+### Gap 4.6: Traditional Task Type Library
+- [x] **Define TraditionalTaskType taxonomy** - 30 types across 6 categories
+- [x] **Create traditional-task-types.ts** - Task templates with metadata
+- [x] **Implement task-constraint-solver.ts** - Object selection for tasks
+- [x] **Implement distractor-generator.ts** - MCQ distractor generation
+- [x] **Create tasks/index.ts** - Barrel exports
+
+### Remaining Phase 4 Gaps (Not Started)
+- [ ] **Gap 4.4: Multi-View Visualization Dashboard** - Dictionary/Network/Priority views
+- [ ] **Gap 4.7: Cognitive Manipulation Tools** - Highlighting, chunking, audio tools
+- [ ] **Gap 4.8: Multi-Curriculum Management** - Multiple learning curricula
+- [ ] **Gap 4.9: External Media Integration** - YouTube/podcast integration
+- [ ] **Gap 4.10: Component Benchmark Standards** - CEFR-aligned benchmarks
+
+---
+
 ## Phase 5: Polish & Package
 *Make it production-ready*
 
@@ -215,22 +264,41 @@
 
 | Phase | Status | Items Done | Total |
 |-------|--------|------------|-------|
-| Phase 1: Foundation | ⬜ Not Started | 0 | 27 |
-| Phase 2: Core Data | ⬜ Not Started | 0 | 19 |
+| Phase 1: Foundation | 🟡 In Progress | 14 | 30 |
+| Phase 2: Core Data | 🟢 Mostly Complete | 18 | 19 |
 | Phase 3: Learning Engine | ⬜ Not Started | 0 | 19 |
 | Phase 4: User Interface | ⬜ Not Started | 0 | 32 |
+| Phase 4B: Gap Implementations | 🟢 Mostly Complete | 21 | 26 |
 | Phase 5: Polish & Package | ⬜ Not Started | 0 | 18 |
-| **TOTAL** | **⬜ 0%** | **0** | **115** |
+| **TOTAL** | **🟡 37%** | **53** | **144** |
 
 ---
 
 ## Quick Reference
 
-### Key Files to Create First
-1. `/src/core/types.ts` - All shared types
-2. `/prisma/schema.prisma` - Database schema
-3. `/src/main/index.ts` - Electron entry
-4. `/src/renderer/App.tsx` - React entry
+### Key Files Created
+1. `/src/core/types.ts` - All shared types ✅
+2. `/src/core/irt.ts` - IRT algorithms ✅
+3. `/src/core/pmi.ts` - PMI computation ✅
+4. `/src/core/fsrs.ts` - Spaced repetition ✅
+5. `/src/core/priority.ts` - Priority calculation ✅
+6. `/src/core/bottleneck.ts` - Bottleneck detection ✅
+7. `/src/core/g2p.ts` - G2P correspondence ✅
+8. `/src/core/morphology.ts` - Morphological analysis ✅
+9. `/src/core/content/` - Content generation module ✅
+10. `/src/core/tasks/` - Task type library ✅
+11. `/src/main/db/prisma.ts` - Database client singleton ✅
+12. `/src/main/db/repositories/goal.repository.ts` - Goal CRUD ✅
+13. `/src/main/db/repositories/mastery.repository.ts` - Mastery tracking ✅
+14. `/src/main/db/repositories/session.repository.ts` - Session recording ✅
+15. `/src/main/db/repositories/collocation.repository.ts` - PMI storage ✅
+16. `/src/core/grammar/` - Grammar organization ✅
+17. `/src/core/register/` - Domain/register structure ✅
+18. `/src/core/state/` - Component state tracking ✅
+
+### Key Files Still Needed
+1. `/src/main/index.ts` - Electron entry
+2. `/src/renderer/App.tsx` - React entry
 
 ### Commands You'll Use
 ```bash

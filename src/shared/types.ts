@@ -71,6 +71,7 @@ export type {
   // Users
   User,
   UserThetaProfile,
+  UserSettings,
 
   // Queue
   LearningQueueItem,
@@ -719,33 +720,146 @@ export type IPCHandler<T extends IPCChannel> = (
 // =============================================================================
 
 /**
- * API exposed to renderer via contextBridge
+ * Goal management API
+ */
+export interface GoalAPI {
+  create: (data: { name: string; targetLanguage: string; nativeLanguage: string; description?: string }) => Promise<GoalSpec>;
+  get: (id: string) => Promise<GoalSpec | null>;
+  list: (includeInactive?: boolean) => Promise<GoalSpec[]>;
+  update: (data: { id: string; name?: string; description?: string; isActive?: boolean }) => Promise<GoalSpec>;
+  delete: (id: string, hard?: boolean) => Promise<void>;
+}
+
+/**
+ * Learning object management API
+ */
+export interface ObjectAPI {
+  create: (data: Partial<LanguageObject> & { goalId: string; content: string }) => Promise<LanguageObject>;
+  get: (id: string) => Promise<LanguageObject | null>;
+  list: (goalId: string, options?: { limit?: number; offset?: number; type?: string }) => Promise<LanguageObject[]>;
+  update: (data: { id: string } & Partial<LanguageObject>) => Promise<LanguageObject>;
+  delete: (id: string) => Promise<void>;
+  import: (goalId: string, objects: Partial<LanguageObject>[]) => Promise<{ imported: number; errors: string[] }>;
+}
+
+/**
+ * Session management API
+ */
+export interface SessionAPI {
+  start: (goalId: string, sessionType: SessionMode, targetDuration?: number) => Promise<{ sessionId: string; firstTask: Task | null }>;
+  end: (sessionId: string) => Promise<SessionSummary>;
+  getCurrent: (goalId: string) => Promise<SessionState | null>;
+  recordResponse: (data: { sessionId: string; objectId: string; correct: boolean; cueLevel: number; responseTimeMs: number; errorComponents?: string[] }) => Promise<{ feedback: ResponseEvaluation; nextTask: Task | null }>;
+  getHistory: (goalId: string, options?: { limit?: number; offset?: number }) => Promise<SessionSummary[]>;
+}
+
+/**
+ * Learning queue API
+ */
+export interface QueueAPI {
+  build: (goalId: string, options?: { sessionSize?: number; newItemRatio?: number }) => Promise<LearningQueueItem[]>;
+  getNext: (goalId: string, excludeIds?: string[]) => Promise<LearningQueueItem | null>;
+  refresh: (goalId: string) => Promise<LearningQueueItem[]>;
+}
+
+/**
+ * Mastery tracking API
+ */
+export interface MasteryAPI {
+  get: (objectId: string) => Promise<MasteryState | null>;
+  getStats: (goalId: string) => Promise<{ distribution: Record<MasteryStage, number>; averageRetention: number }>;
+}
+
+/**
+ * Analytics API
+ */
+export interface AnalyticsAPI {
+  getProgress: (goalId: string, timeRange?: 'day' | 'week' | 'month' | 'all') => Promise<{ total: number; mastered: number; learning: number; accuracy: number; streak: number }>;
+  getBottlenecks: (goalId: string, minResponses?: number) => Promise<BottleneckAnalysis>;
+  getSessionStats: (goalId: string, days?: number) => Promise<{ sessions: number; totalTime: number; averageAccuracy: number }>;
+}
+
+/**
+ * User profile API
+ */
+export interface ProfileAPI {
+  get: () => Promise<User>;
+  update: (data: Partial<User>) => Promise<User>;
+  getSettings: () => Promise<UserSettings>;
+  updateSettings: (settings: Partial<UserSettings>) => Promise<UserSettings>;
+}
+
+/**
+ * Error analysis result
+ */
+export interface ErrorAnalysisResult {
+  objectId: string;
+  responseId?: string;
+  errorType: string;
+  component: ComponentType;
+  explanation: string;
+  correction: string;
+  similarErrors?: string[];
+}
+
+/**
+ * Bottleneck info with component details
+ */
+export interface ComponentBottleneck {
+  component: ComponentType;
+  errorRate: number;
+  totalErrors: number;
+  recentErrors: number;
+  trend: number;
+  recommendation: string;
+  confidence: number;
+}
+
+/**
+ * Claude AI integration API
+ */
+export interface ClaudeAPI {
+  generateContent: (type: 'exercise' | 'explanation' | 'example', objectId: string, context?: string) => Promise<TaskContent>;
+  analyzeError: (objectId: string, userResponse: string, expectedResponse: string, responseId?: string) => Promise<ErrorAnalysisResult>;
+  getHint: (objectId: string, hintLevel: 1 | 2 | 3, previousHints?: string[]) => Promise<{ hint: string; level: number; remainingLevels: number }>;
+  getBottlenecks: (goalId: string, limit?: number) => Promise<{ bottlenecks: ComponentBottleneck[]; primaryBottleneck: ComponentBottleneck | null }>;
+}
+
+/**
+ * App info API
+ */
+export interface AppAPI {
+  getVersion: () => Promise<string>;
+  getPlatform: () => NodeJS.Platform;
+}
+
+/**
+ * Structured API exposed to renderer via contextBridge.
+ * This provides a clean, organized interface for renderer code.
  */
 export interface LogosAPI {
-  /**
-   * Invoke an IPC handler and get typed response
-   */
-  invoke: IPCInvoke;
+  goal: GoalAPI;
+  object: ObjectAPI;
+  session: SessionAPI;
+  queue: QueueAPI;
+  mastery: MasteryAPI;
+  analytics: AnalyticsAPI;
+  profile: ProfileAPI;
+  claude: ClaudeAPI;
+  app: AppAPI;
+}
 
-  /**
-   * Subscribe to IPC events (for push notifications from main)
-   */
+/**
+ * Low-level IPC invoke function (alternative to structured API)
+ */
+export type IPCInvokeFn = IPCInvoke;
+
+/**
+ * Event subscription interface
+ */
+export interface LogosEvents {
   on: (channel: string, callback: (...args: unknown[]) => void) => void;
-
-  /**
-   * Unsubscribe from IPC events
-   */
   off: (channel: string, callback: (...args: unknown[]) => void) => void;
-
-  /**
-   * Platform information
-   */
-  platform: NodeJS.Platform;
-
-  /**
-   * App version
-   */
-  version: string;
 }
 
 /**

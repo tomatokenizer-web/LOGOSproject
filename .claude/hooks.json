@@ -1,0 +1,92 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/claude-code/main/schemas/hooks.json",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": {
+          "tool": "Write"
+        },
+        "commands": [
+          {
+            "type": "message",
+            "message": "[Agent Trigger] File written. Remember to:\n1. Trigger documentation-specialist for shadow docs in docs/narrative/\n2. Check if security-specialist is needed (auth/token/key patterns)\n3. Verify layer boundaries (ui/ipc/db/core/service)"
+          }
+        ]
+      },
+      {
+        "matcher": {
+          "tool": "Edit"
+        },
+        "commands": [
+          {
+            "type": "message",
+            "message": "[Agent Trigger] File edited. Consider triggering documentation-specialist to update shadow docs."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": {
+          "tool": "Write",
+          "path": "**/auth*|**/token*|**/key*|**/secret*|**/password*"
+        },
+        "commands": [
+          {
+            "type": "message",
+            "message": "[Agent Trigger] SECURITY-SENSITIVE file detected. security-specialist should review this code."
+          }
+        ]
+      },
+      {
+        "matcher": {
+          "tool": "Write",
+          "path": "**/*.ipc.ts"
+        },
+        "commands": [
+          {
+            "type": "message",
+            "message": "[Agent Trigger] IPC handler file. api-specialist domain. Ensure layer boundaries are respected."
+          }
+        ]
+      },
+      {
+        "matcher": {
+          "tool": "Write",
+          "path": "**/renderer/**/*.tsx"
+        },
+        "commands": [
+          {
+            "type": "message",
+            "message": "[Agent Trigger] React component file. frontend-specialist domain."
+          }
+        ]
+      },
+      {
+        "matcher": {
+          "tool": "Write",
+          "path": "**/db/**/*|**/prisma/**/*"
+        },
+        "commands": [
+          {
+            "type": "message",
+            "message": "[Agent Trigger] Database file. database-specialist domain. Check schema compatibility."
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": {
+          "event": "task_complete"
+        },
+        "commands": [
+          {
+            "type": "message",
+            "message": "[Agent Trigger] Task complete. Verify:\n- Shadow documentation updated?\n- Security review needed?\n- Git commit ready?"
+          }
+        ]
+      }
+    ]
+  }
+}

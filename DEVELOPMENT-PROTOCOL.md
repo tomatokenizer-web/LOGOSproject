@@ -169,10 +169,141 @@ Deliverables:
 ├── Language Object storage ✓
 ├── Mastery state tracking ✓
 ├── Session recording ✓
-└── All DB operations tested ✓
+├── All DB operations tested ✓
+│
+│   [NEW] Extended Schema Requirements:
+├── Domain distribution vector storage (domainDistribution JSON)
+├── Morphological score field (morphologicalScore Float)
+└── Phonological difficulty field (phonologicalDifficulty Float)
 
 CHECKPOINT: You verify data persists across restarts
 ```
+
+#### Phase 2 Schema Extensions (NEW)
+
+The following fields must be added to support the five-element feature vector z(w):
+
+```prisma
+model LanguageObject {
+  // Existing FRE fields
+  frequency            Float  // F: normalized frequency
+  relationalDensity    Float  // R: hub/centrality score
+  contextualContribution Float // E: contextual importance
+
+  // NEW: Extended z(w) vector fields
+  domainDistribution     Json?   // D: {"news": 0.1, "medical": 0.8, ...}
+  morphologicalScore     Float?  // M: family size × productivity metric
+  phonologicalDifficulty Float?  // P: G2P entropy + complexity metric
+}
+```
+
+**Implementation Notes:**
+- `domainDistribution` stores a JSON object with domain keys and probability values
+- `morphologicalScore` is computed during corpus processing via Claude API
+- `phonologicalDifficulty` is computed using G2P analysis functions
+
+#### Phase 2 G2P Model Implementation (NEW - 2026-01-04)
+
+Implement context-conditioned Grapheme-to-Phoneme mapping for the P (phonological difficulty) score:
+
+**Required Interfaces:**
+
+```typescript
+interface G2PContext {
+  position: 'initial' | 'medial' | 'final';
+  precedingGrapheme?: string;
+  followingGrapheme?: string;
+  morphemeBoundary: boolean;
+  stressPattern?: 'primary' | 'secondary' | 'unstressed';
+}
+
+interface G2PRule {
+  id: string;
+  grapheme: string;
+  phoneme: string | string[];
+  conditions: Partial<G2PContext>;
+  priority: number;
+  exceptionRate: number;  // 0-1, higher = more exceptions
+}
+```
+
+**Required Functions:**
+
+```typescript
+// Core G2P functions
+function segmentGraphemes(word: string): GraphemeUnit[];
+function applyG2PRules(graphemes: GraphemeUnit[], rules: G2PRule[]): PhonemeResult;
+function computeG2PEntropy(word: string): number;  // For P score
+
+// Entropy formula: H(w) = -Σ P(phoneme|grapheme,context) × log₂(P)
+// Higher entropy = less predictable = higher phonological difficulty
+```
+
+**Implementation Checklist:**
+- [ ] `G2PRule` interface and `ENGLISH_G2P_RULES` array
+- [ ] `segmentGraphemes()` function handling digraphs (sh, ch, th, etc.)
+- [ ] `applyG2PRules()` with context-aware rule matching
+- [ ] `computeG2PEntropy()` for P score calculation
+- [ ] `LanguageG2PSpec` configuration for English (extensible to other languages)
+
+See: THEORETICAL-FOUNDATIONS.md Section 1.3, ALGORITHMIC-FOUNDATIONS.md Section 3.5
+
+#### Phase 2 Word Organization Implementation (NEW - 2026-01-04)
+
+Implement word segmentation and organization for efficient retrieval and UI display:
+
+**Required Interfaces:**
+
+```typescript
+interface WordSegmentation {
+  graphemeSegments: GraphemeUnit[];    // Visual units
+  morphemeSegments: MorphemeUnit[];    // Meaning units
+  syllableSegments: SyllableUnit[];    // Pronunciation units
+}
+
+interface MultiLayerWordCard {
+  orthographic: {
+    written: string;
+    graphemes: GraphemeUnit[];
+    highlightedMorphemes: string[];
+  };
+  morphological: {
+    root: string;
+    affixes: Affix[];
+    familySize: number;
+    productivity: number;
+  };
+  semantic: {
+    definitions: Definition[];
+    collocations: Collocation[];
+    domainTags: string[];
+  };
+}
+```
+
+**Required Functions:**
+
+```typescript
+// Segmentation pipeline
+function segmentWord(word: string): WordSegmentation;
+function buildMorphologicalFamily(root: string): MorphologicalFamily;
+function computeMorphologicalScore(word: string): number;  // For M score
+
+// Indexing for fast retrieval
+function buildWordIndexes(objects: LanguageObject[]): WordIndexes;
+// Returns: { byGrapheme, byMorpheme, byPhoneme, bySemantic }
+```
+
+**Implementation Checklist:**
+- [ ] `WordSegmentation` pipeline (grapheme + morpheme + syllable)
+- [ ] `buildWordIndexes()` for fast retrieval by any layer
+- [ ] `MorphologicalFamily` builder with family size calculation
+- [ ] `computeMorphologicalScore()` for M score (familySize × productivity)
+- [ ] `MultiLayerWordCard` builder for UI display
+
+See: ALGORITHMIC-FOUNDATIONS.md Section 3.5
+
+---
 
 ### Phase 3: Learning Engine (The 7-Layer Pipeline)
 
@@ -184,6 +315,7 @@ MVP Pipeline (3 layers):
 │ Layer 1: State + Priority                   │
 │ - User θ analysis                           │
 │ - FRE-based prioritization                  │
+│ - [NEW] S_eff with g(m) adjustment          │
 │ - (Combines theoretical layers 1-2)         │
 └─────────────────────────────────────────────┘
                     │
@@ -192,6 +324,8 @@ MVP Pipeline (3 layers):
 │ Layer 2: Task Generation                    │
 │ - Vector spotlight selection                │
 │ - Modality + format combination             │
+│ - [NEW] Task-word matching by z(w) criteria │
+│ - [NEW] Cognitive process targeting         │
 │ - (Combines theoretical layers 3-5)         │
 └─────────────────────────────────────────────┘
                     │
@@ -212,10 +346,117 @@ Deliverables:
 ├── Task generation from templates ✓
 ├── IRT difficulty adjustment ✓
 ├── Fluency/Versatility task balance ✓
-└── Queue updates correctly ✓
+├── Queue updates correctly ✓
+│
+│   [NEW] Extended Engine Requirements:
+├── S_eff effective priority function with g(m) mastery adjustment
+├── Task-word matching based on z(w) vector criteria
+├── Cognitive process targeting (morphological/phonological/relational tasks)
+└── Task template metadata with activatedLayers and cognitiveProcesses
 
 CHECKPOINT: You verify learning queue makes sense
 ```
+
+#### Phase 3 Algorithm Extensions (NEW)
+
+**1. Effective Priority Function S_eff**
+
+Replace simple FRE priority with:
+```typescript
+S_eff(w) = S_base(w | context, goal) × g(m(w))
+```
+
+Where `g(m)` implements inverted U-curve prioritization:
+- m < 0.2: Foundation lacking → g = 0.5
+- m ∈ [0.2, 0.7]: Optimal zone → g = 0.8-1.0
+- m > 0.9: Mastered → g = 0.3
+
+See: ALGORITHMIC-FOUNDATIONS.md Section 3.3
+
+**2. Task-Word Matching**
+
+Select task templates based on word characteristics:
+- High M (morphological) → Word family / derivation tasks
+- High P (phonological) → Dictation / G2P tasks
+- High R (relational) → Collocation / network tasks
+- Domain-specific D → Context judgment tasks
+
+See: ALGORITHMIC-FOUNDATIONS.md Section 3.4
+
+**3. Cognitive Process Targeting**
+
+Each task template specifies:
+- `cognitiveProcesses`: ['simple_recall', 'inference', 'pattern_generalization', ...]
+- `activatedLayers`: ['phonological', 'morphological', 'lexical_semantic', ...]
+
+The algorithm selects tasks that activate appropriate processes for the word's characteristics.
+
+#### Phase 3 Task Selection Implementation (NEW - 2026-01-04)
+
+**Required Interfaces:**
+
+```typescript
+interface TaskTemplateMetadata {
+  id: string;
+  taskType: TaskType;
+  targetWordCriteria: {
+    minM?: number; maxM?: number;  // Morphological threshold
+    minP?: number; maxP?: number;  // Phonological threshold
+    minR?: number; maxR?: number;  // Relational threshold
+    requiredDomains?: string[];    // Domain requirements
+  };
+  cognitiveProcesses: CognitiveProcess[];
+  activatedLayers: LanguageLayer[];
+  masteryStageRange: [number, number];
+}
+
+type CognitiveProcess =
+  | 'simple_recall'
+  | 'cued_recall'
+  | 'recognition'
+  | 'inference'
+  | 'pattern_generalization'
+  | 'productive_use'
+  | 'contextual_judgment';
+
+type LanguageLayer =
+  | 'phonological'
+  | 'orthographic'
+  | 'morphological'
+  | 'lexical_semantic'
+  | 'syntactic'
+  | 'pragmatic';
+```
+
+**Required Functions:**
+
+```typescript
+function selectOptimalTask(
+  word: LanguageObject,
+  masteryState: MasteryState,
+  templates: TaskTemplateMetadata[]
+): TaskTemplateMetadata;
+
+function computeTaskWordFit(
+  word: LanguageObject,
+  template: TaskTemplateMetadata
+): number;  // 0-1 fit score
+
+function isTaskTypeAppropriateForStage(
+  taskType: TaskType,
+  masteryStage: number
+): boolean;
+```
+
+**Implementation Checklist:**
+
+- [ ] `TaskTemplateMetadata` interface with full criteria specification
+- [ ] `selectOptimalTask()` matching word z(w) to template criteria
+- [ ] `computeTaskWordFit()` scoring function
+- [ ] `isTaskTypeAppropriateForStage()` validation
+- [ ] Task template library with cognitive process metadata (minimum 10 templates)
+
+See: ALGORITHMIC-FOUNDATIONS.md Section 3.4
 
 ### Phase 4: Complete UI + Polish
 ```
@@ -372,6 +613,103 @@ decrease difficulty by 0.1 and schedule review in 1 day"
 6. debug-git-specialist commits if milestone
 7. Main Claude verifies integration
 8. Repeat
+```
+
+### Agent Trigger System (NEW - 2026-01-04)
+
+Automatic agent triggering is implemented via `src/main/services/agent-trigger.ts` and `src/main/services/agent-hooks.ts`.
+
+#### Trigger Detection Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    TRIGGER DETECTION                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Context Analysis                                            │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
+│  │ Layer-based  │    │ File Pattern │    │ Bottleneck   │  │
+│  │ Detection    │    │ Matching     │    │ Registration │  │
+│  └──────┬───────┘    └──────┬───────┘    └──────┬───────┘  │
+│         │                   │                   │           │
+│         └───────────────────┼───────────────────┘           │
+│                             ▼                               │
+│                    ┌────────────────┐                       │
+│                    │ AgentTrigger[] │                       │
+│                    │ with priority  │                       │
+│                    └────────┬───────┘                       │
+│                             │                               │
+│         ┌───────────────────┼───────────────────┐           │
+│         ▼                   ▼                   ▼           │
+│    immediate             soon           when_available      │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Automatic Trigger Conditions
+
+| Condition | Triggered Agent(s) | Priority |
+|-----------|-------------------|----------|
+| UI layer work | `frontend-specialist` | when_available |
+| IPC handler changes | `api-specialist` | when_available |
+| Database operations | `database-specialist` | when_available |
+| Security-sensitive operation | `security-specialist` | immediate |
+| External API integration | `mcp-specialist` | soon |
+| Any code change | `documentation-specialist` | soon |
+| Same bottleneck 3+ times | `meta-agent-builder` | immediate |
+| Missing agent specialization | `meta-agent-builder` | immediate |
+
+#### Meta-Agent-Builder Trigger Conditions
+
+`meta-agent-builder` is automatically triggered when:
+
+1. **Explicit gap**: Bottleneck type is `missing_agent_specialization`
+2. **Repeated failures**: Same bottleneck type occurs 3+ times
+3. **No handler**: No existing agent is mapped to handle the bottleneck type
+
+```typescript
+// Example: Registering a bottleneck that triggers meta-agent-builder
+const bottleneck: DevelopmentBottleneck = {
+  type: 'missing_agent_specialization',
+  location: 'src/new-feature/',
+  blockedBy: 'Need ML model integration specialist',
+  proposedFix: 'Create agent specialized in ML model deployment',
+  affectedAgents: ['api-specialist'],
+  severity: 'high',
+  detectedAt: new Date(),
+};
+
+const triggers = registerBottleneck(bottleneck);
+// Returns: [{ agent: 'meta-agent-builder', priority: 'immediate', ... }]
+```
+
+#### IPC Integration
+
+Agent triggers are integrated via IPC handlers in `src/main/ipc/agent.ipc.ts`:
+
+| Channel | Purpose |
+|---------|---------|
+| `agent:detectTriggers` | Analyze context, return recommended agents |
+| `agent:registerBottleneck` | Register blocker, trigger appropriate agents |
+| `agent:getBottlenecks` | List all active bottlenecks |
+| `agent:resolveBottleneck` | Mark bottleneck as resolved |
+| `agent:generateSpec` | Generate new agent spec from bottleneck |
+
+#### Using Agent Hooks in Handlers
+
+```typescript
+import { withAgentHooks } from '../services/agent-hooks';
+
+// Wrap handler with automatic agent detection
+const wrappedHandler = withAgentHooks(
+  'goal',        // domain
+  'create',      // operation
+  'goal.ipc.ts', // location
+  async (request) => {
+    // Original handler logic
+    return success(result);
+  }
+);
 ```
 
 ---
@@ -592,7 +930,8 @@ function handleResponse(response: Response, mode: SessionMode) {
 
 ---
 
-*Protocol Version: 1.2*
+*Protocol Version: 1.3*
 *Updated: 2026-01-04*
 *This document governs all LOGOS development*
-*Aligned with: THEORETICAL-FOUNDATIONS.md v2.0*
+*Aligned with: THEORETICAL-FOUNDATIONS.md v2.1, ALGORITHMIC-FOUNDATIONS.md v2.1*
+*New additions: G2P Model (Phase 2), Word Organization (Phase 2), Task Selection (Phase 3)*

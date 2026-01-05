@@ -1095,6 +1095,38 @@ export interface User {
 
   /** Account creation date */
   createdAt: Date;
+
+  /** User settings */
+  settings?: UserSettings;
+}
+
+/**
+ * User application settings
+ */
+export interface UserSettings {
+  /** Theme preference */
+  theme: 'light' | 'dark' | 'system';
+
+  /** Daily goal (minutes) */
+  dailyGoal: number;
+
+  /** Notifications enabled */
+  notificationsEnabled: boolean;
+
+  /** Sound effects enabled */
+  soundEnabled: boolean;
+
+  /** Default session duration (minutes) */
+  defaultSessionDuration: number;
+
+  /** New item ratio in sessions */
+  newItemRatio: number;
+
+  /** Show hints automatically */
+  autoHints: boolean;
+
+  /** Keyboard shortcuts enabled */
+  keyboardShortcuts: boolean;
 }
 
 // =============================================================================

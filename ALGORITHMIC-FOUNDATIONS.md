@@ -724,6 +724,878 @@ function determineStage(state: MasteryState): 0 | 1 | 2 | 3 | 4 {
 
 ---
 
+## 3.3 Effective Priority Function S_eff
+
+The effective priority function integrates **language structure features** (z vector) with **learner state** (mastery) to determine optimal learning sequences.
+
+### Core Formula
+
+```
+S_eff(w | context, learner_state) = S_base(w | context, goal) × g(m(w))
+```
+
+Where:
+- `S_base` = Base priority from five-element vector z(w)
+- `g(m)` = Mastery adjustment function
+- `m(w)` = Learner's current mastery level for word w
+
+### Implementation
+
+```typescript
+interface EffectivePriorityInput {
+  object: LanguageObject;
+  masteryState: MasteryState;
+  context: {
+    domain: string;
+    goal: string;
+    targetSkills: ComponentType[];
+  };
+  weights: PriorityWeights;
+}
+
+interface PriorityWeights {
+  frequency: number;      // w_F (default: 0.25)
+  relational: number;     // w_R (default: 0.25)
+  domain: number;         // w_D (default: 0.20)
+  morphological: number;  // w_M (default: 0.15)
+  phonological: number;   // w_P (default: 0.15)
+}
+
+function computeEffectivePriority(input: EffectivePriorityInput): number {
+  const { object, masteryState, context, weights } = input;
+
+  // Step 1: Compute base priority from z(w) vector
+  const S_base = computeBasePriority(object, context, weights);
+
+  // Step 2: Apply mastery adjustment g(m)
+  const g_m = computeMasteryAdjustment(masteryState);
+
+  // Step 3: Apply context-specific modifiers
+  const contextModifier = computeContextModifier(object, context);
+
+  return S_base * g_m * contextModifier;
+}
+
+function computeBasePriority(
+  obj: LanguageObject,
+  context: { domain: string; goal: string },
+  weights: PriorityWeights
+): number {
+  // Get domain relevance from D vector
+  const domainRelevance = obj.domainDistribution?.[context.domain] ?? 0.1;
+
+  const score = (
+    weights.frequency * obj.frequency +
+    weights.relational * obj.relationalDensity +
+    weights.domain * domainRelevance +
+    weights.morphological * (obj.morphologicalScore ?? 0.5) -
+    weights.phonological * (obj.phonologicalDifficulty ?? 0.5)
+  );
+
+  // Normalize to [0, 1]
+  return Math.max(0, Math.min(1, score));
+}
+```
+
+### Mastery Adjustment Function g(m)
+
+The g(m) function implements an **inverted U-curve** that:
+- Deprioritizes already-mastered items (avoid overlearning)
+- Deprioritizes items far beyond current ability (avoid frustration)
+- Maximizes priority for items in the **Zone of Proximal Development**
+
+```typescript
+/**
+ * Mastery adjustment function g(m)
+ *
+ * Returns a multiplier [0, 1] based on current mastery state
+ *
+ * Zone mapping:
+ * - m < 0.2: Foundation lacking → moderate priority (needs prerequisite work)
+ * - m ∈ [0.2, 0.4]: Emerging → high priority (optimal learning zone)
+ * - m ∈ [0.4, 0.7]: Developing → highest priority (active consolidation)
+ * - m ∈ [0.7, 0.9]: Stabilizing → moderate priority (maintenance mode)
+ * - m > 0.9: Mastered → low priority (occasional reinforcement only)
+ */
+function computeMasteryAdjustment(state: MasteryState): number {
+  const m = state.cueFreeAccuracy;
+  const gap = state.cueAssistedAccuracy - state.cueFreeAccuracy;
+  const stability = state.fsrsCard?.stability ?? 0;
+
+  // Base adjustment from accuracy
+  let g: number;
+
+  if (m < 0.2) {
+    g = 0.5;  // Foundation lacking
+  } else if (m < 0.4) {
+    g = 0.8 + (m - 0.2) * 1.0;  // Emerging: 0.8 → 1.0
+  } else if (m < 0.7) {
+    g = 1.0;  // Developing: optimal zone
+  } else if (m < 0.9) {
+    g = 1.0 - (m - 0.7) * 1.5;  // Stabilizing: 1.0 → 0.7
+  } else {
+    g = 0.3;  // Mastered
+  }
+
+  // Boost for high scaffolding gap (needs more cue-free practice)
+  if (gap > 0.3) {
+    g *= 1.2;
+  }
+
+  // Reduce for very high stability (well-consolidated)
+  if (stability > 30) {
+    g *= 0.8;
+  }
+
+  return Math.max(0.1, Math.min(1.5, g));
+}
+```
+
+### Context Modifier
+
+Adjusts priority based on learning goals and target skills:
+
+```typescript
+function computeContextModifier(
+  obj: LanguageObject,
+  context: { domain: string; goal: string; targetSkills: ComponentType[] }
+): number {
+  let modifier = 1.0;
+
+  // Boost if object matches target domain
+  const domainMatch = obj.domainDistribution?.[context.domain] ?? 0;
+  if (domainMatch > 0.3) {
+    modifier *= 1.0 + domainMatch * 0.5;
+  }
+
+  // Boost if object exercises target skills
+  const objSkills = inferSkillsFromObject(obj);
+  const skillOverlap = context.targetSkills.filter(s => objSkills.includes(s)).length;
+  if (skillOverlap > 0) {
+    modifier *= 1.0 + (skillOverlap / context.targetSkills.length) * 0.3;
+  }
+
+  return modifier;
+}
+
+function inferSkillsFromObject(obj: LanguageObject): ComponentType[] {
+  const skills: ComponentType[] = [];
+
+  if (obj.type === 'LEX') skills.push('LEX');
+  if (obj.morphologicalScore && obj.morphologicalScore > 0.5) skills.push('MORPH');
+  if (obj.phonologicalDifficulty && obj.phonologicalDifficulty > 0.5) skills.push('PHON');
+  // Add more inference rules
+
+  return skills;
+}
+```
+
+### Complete Priority Queue Algorithm
+
+```typescript
+interface LearningQueueItem {
+  objectId: string;
+  content: string;
+  effectivePriority: number;
+  recommendedTaskType: TaskType;
+  dueForReview: boolean;
+}
+
+async function buildLearningQueue(
+  goalId: string,
+  learnerState: UserProficiencyState,
+  context: { domain: string; goal: string; targetSkills: ComponentType[] },
+  limit: number = 20
+): Promise<LearningQueueItem[]> {
+  // 1. Get all language objects for goal
+  const objects = await db.languageObject.findMany({
+    where: { goalId },
+    include: { masteryState: true }
+  });
+
+  // 2. Compute effective priority for each
+  const weights = getWeightsForGoal(context.goal);
+  const prioritized = objects.map(obj => ({
+    object: obj,
+    mastery: obj.masteryState,
+    priority: computeEffectivePriority({
+      object: obj,
+      masteryState: obj.masteryState ?? createDefaultMasteryState(),
+      context,
+      weights
+    }),
+    dueForReview: isDueForReview(obj.masteryState)
+  }));
+
+  // 3. Sort: due items first, then by priority
+  prioritized.sort((a, b) => {
+    if (a.dueForReview !== b.dueForReview) {
+      return a.dueForReview ? -1 : 1;
+    }
+    return b.priority - a.priority;
+  });
+
+  // 4. Select task type based on mastery stage
+  return prioritized.slice(0, limit).map(p => ({
+    objectId: p.object.id,
+    content: p.object.content,
+    effectivePriority: p.priority,
+    recommendedTaskType: selectTaskTypeForStage(p.mastery?.stage ?? 0),
+    dueForReview: p.dueForReview
+  }));
+}
+
+function selectTaskTypeForStage(stage: number): TaskType {
+  switch (stage) {
+    case 0: return 'introduction';  // New item exposure
+    case 1: return 'recognition';   // MCQ
+    case 2: return 'recall';        // Fill-in-blank
+    case 3: return 'production';    // Free response
+    case 4: return 'timed';         // Speed drill
+    default: return 'recognition';
+  }
+}
+```
+
+---
+
+## 3.4 Task-Word Matching: Cognitive Process Targeting
+
+Different word characteristics call for different task types to optimize learning.
+
+### Task Template Metadata
+
+```typescript
+interface TaskTemplateMetadata {
+  // Basic classification
+  id: string;
+  name: string;
+  taskType: TaskType;
+  taskFormat: 'mcq' | 'fill_blank' | 'free_response' | 'transformation' | 'dictation';
+
+  // Cognitive processes activated
+  cognitiveProcesses: CognitiveProcess[];
+
+  // Language layers activated simultaneously
+  activatedLayers: LanguageLayer[];
+
+  // Target word criteria
+  targetWordCriteria: TargetWordCriteria;
+
+  // Difficulty parameters
+  baseDifficulty: number;
+  difficultyModifiers: DifficultyModifier[];
+}
+
+type CognitiveProcess =
+  | 'simple_recall'           // 단순 회상
+  | 'pattern_recognition'     // 패턴 인식
+  | 'substitution'            // 대체/변환
+  | 'inference'               // 의미 추론
+  | 'context_judgment'        // 맥락 판단
+  | 'pattern_generalization'  // 패턴 일반화
+  | 'articulation_planning'   // 조음 계획
+  | 'auditory_discrimination' // 청각 변별
+  | 'orthographic_encoding';  // 철자 부호화
+
+type LanguageLayer =
+  | 'phonological'
+  | 'orthographic'
+  | 'morphological'
+  | 'lexical_semantic'
+  | 'syntactic'
+  | 'pragmatic';
+
+interface TargetWordCriteria {
+  // Morphological targeting
+  minMorphologicalScore?: number;  // High M → derivation tasks
+  maxMorphologicalScore?: number;
+
+  // Phonological targeting
+  minPhonologicalDifficulty?: number;  // High P → pronunciation tasks
+  maxPhonologicalDifficulty?: number;
+
+  // Domain targeting
+  requiredDomains?: string[];
+  excludedDomains?: string[];
+
+  // Relational targeting
+  minRelationalDensity?: number;  // High R → network/collocation tasks
+
+  // Frequency targeting
+  minFrequency?: number;
+  maxFrequency?: number;
+}
+```
+
+### Task Template Library
+
+```typescript
+const TASK_TEMPLATES: TaskTemplateMetadata[] = [
+  // ========== MORPHOLOGICAL FOCUS ==========
+  {
+    id: 'morph_family_recognition',
+    name: 'Word Family Recognition',
+    taskType: 'recognition',
+    taskFormat: 'mcq',
+    cognitiveProcesses: ['pattern_recognition', 'pattern_generalization'],
+    activatedLayers: ['morphological', 'lexical_semantic'],
+    targetWordCriteria: {
+      minMorphologicalScore: 0.6  // Words with rich derivational families
+    },
+    baseDifficulty: 0.4,
+    difficultyModifiers: []
+  },
+  {
+    id: 'morph_derivation_production',
+    name: 'Derivation Production',
+    taskType: 'production',
+    taskFormat: 'fill_blank',
+    cognitiveProcesses: ['pattern_generalization', 'substitution'],
+    activatedLayers: ['morphological', 'lexical_semantic', 'syntactic'],
+    targetWordCriteria: {
+      minMorphologicalScore: 0.5
+    },
+    baseDifficulty: 0.6,
+    difficultyModifiers: [
+      { condition: 'affixProductivity < 0.5', modifier: 0.15 }
+    ]
+  },
+
+  // ========== PHONOLOGICAL FOCUS ==========
+  {
+    id: 'phon_g2p_recognition',
+    name: 'Spelling-Sound Matching',
+    taskType: 'recognition',
+    taskFormat: 'mcq',
+    cognitiveProcesses: ['auditory_discrimination', 'orthographic_encoding'],
+    activatedLayers: ['phonological', 'orthographic'],
+    targetWordCriteria: {
+      minPhonologicalDifficulty: 0.5  // Words with tricky G2P
+    },
+    baseDifficulty: 0.5,
+    difficultyModifiers: []
+  },
+  {
+    id: 'phon_dictation',
+    name: 'Dictation Task',
+    taskType: 'production',
+    taskFormat: 'dictation',
+    cognitiveProcesses: ['auditory_discrimination', 'orthographic_encoding', 'articulation_planning'],
+    activatedLayers: ['phonological', 'orthographic'],
+    targetWordCriteria: {
+      minPhonologicalDifficulty: 0.4
+    },
+    baseDifficulty: 0.7,
+    difficultyModifiers: [
+      { condition: 'g2pEntropy > 0.7', modifier: 0.2 }
+    ]
+  },
+
+  // ========== RELATIONAL/NETWORK FOCUS ==========
+  {
+    id: 'rel_collocation_completion',
+    name: 'Collocation Completion',
+    taskType: 'recall',
+    taskFormat: 'fill_blank',
+    cognitiveProcesses: ['pattern_recognition', 'context_judgment'],
+    activatedLayers: ['lexical_semantic', 'syntactic'],
+    targetWordCriteria: {
+      minRelationalDensity: 0.6  // Hub words with many collocations
+    },
+    baseDifficulty: 0.5,
+    difficultyModifiers: [
+      { condition: 'pmi < 5', modifier: 0.2 }  // Low PMI = harder
+    ]
+  },
+  {
+    id: 'rel_network_inference',
+    name: 'Semantic Network Inference',
+    taskType: 'production',
+    taskFormat: 'free_response',
+    cognitiveProcesses: ['inference', 'pattern_generalization'],
+    activatedLayers: ['lexical_semantic', 'pragmatic'],
+    targetWordCriteria: {
+      minRelationalDensity: 0.5
+    },
+    baseDifficulty: 0.7,
+    difficultyModifiers: []
+  },
+
+  // ========== DOMAIN-SPECIFIC FOCUS ==========
+  {
+    id: 'domain_context_judgment',
+    name: 'Domain Context Judgment',
+    taskType: 'recognition',
+    taskFormat: 'mcq',
+    cognitiveProcesses: ['context_judgment', 'inference'],
+    activatedLayers: ['lexical_semantic', 'pragmatic'],
+    targetWordCriteria: {
+      // Dynamically set based on user's target domain
+    },
+    baseDifficulty: 0.5,
+    difficultyModifiers: []
+  }
+];
+```
+
+### Task Selection Algorithm
+
+```typescript
+function selectOptimalTask(
+  word: LanguageObject,
+  masteryState: MasteryState,
+  availableTemplates: TaskTemplateMetadata[] = TASK_TEMPLATES
+): TaskTemplateMetadata {
+  // 1. Filter by mastery-appropriate task types
+  const stageAppropriate = availableTemplates.filter(t =>
+    isTaskTypeAppropriateForStage(t.taskType, masteryState.stage)
+  );
+
+  // 2. Filter by word criteria match
+  const criteriaMatched = stageAppropriate.filter(t =>
+    matchesWordCriteria(word, t.targetWordCriteria)
+  );
+
+  // 3. Score remaining templates by cognitive process optimization
+  const scored = criteriaMatched.map(t => ({
+    template: t,
+    score: computeTaskWordFit(word, masteryState, t)
+  }));
+
+  // 4. Select highest scoring template
+  scored.sort((a, b) => b.score - a.score);
+
+  return scored[0]?.template ?? getDefaultTemplate(masteryState.stage);
+}
+
+function isTaskTypeAppropriateForStage(taskType: TaskType, stage: number): boolean {
+  const appropriateTypes: Record<number, TaskType[]> = {
+    0: ['introduction'],
+    1: ['recognition'],
+    2: ['recognition', 'recall'],
+    3: ['recall', 'production'],
+    4: ['production', 'timed']
+  };
+
+  return appropriateTypes[stage]?.includes(taskType) ?? false;
+}
+
+function matchesWordCriteria(word: LanguageObject, criteria: TargetWordCriteria): boolean {
+  if (criteria.minMorphologicalScore !== undefined &&
+      (word.morphologicalScore ?? 0) < criteria.minMorphologicalScore) {
+    return false;
+  }
+
+  if (criteria.minPhonologicalDifficulty !== undefined &&
+      (word.phonologicalDifficulty ?? 0) < criteria.minPhonologicalDifficulty) {
+    return false;
+  }
+
+  if (criteria.minRelationalDensity !== undefined &&
+      word.relationalDensity < criteria.minRelationalDensity) {
+    return false;
+  }
+
+  // Add more criteria checks...
+
+  return true;
+}
+
+function computeTaskWordFit(
+  word: LanguageObject,
+  mastery: MasteryState,
+  template: TaskTemplateMetadata
+): number {
+  let score = 0;
+
+  // Score based on how well word properties match task focus
+  if (template.activatedLayers.includes('morphological')) {
+    score += (word.morphologicalScore ?? 0) * 0.3;
+  }
+
+  if (template.activatedLayers.includes('phonological')) {
+    score += (word.phonologicalDifficulty ?? 0) * 0.3;
+  }
+
+  // Score based on scaffolding gap closure potential
+  const gap = mastery.cueAssistedAccuracy - mastery.cueFreeAccuracy;
+  if (gap > 0.2 && template.cognitiveProcesses.includes('simple_recall')) {
+    score += 0.2;  // Needs more recall practice
+  }
+
+  // Score based on difficulty match
+  const difficultyMatch = 1 - Math.abs(template.baseDifficulty - (1 - mastery.cueFreeAccuracy));
+  score += difficultyMatch * 0.2;
+
+  return score;
+}
+```
+
+---
+
+## 3.5 Word Segmentation and Organization Algorithm
+
+Words in LOGOS are not simple strings but **multi-dimensional nodes** requiring systematic segmentation, indexing, and organization for efficient retrieval and learning path construction.
+
+### 3.5.1 Word Segmentation Pipeline
+
+```typescript
+interface WordSegmentation {
+  // Raw input
+  rawWord: string;
+
+  // Grapheme segmentation (for G2P)
+  graphemeSegments: GraphemeSegment[];
+
+  // Morpheme segmentation (for M score)
+  morphemeSegments: MorphemeSegment[];
+
+  // Syllable segmentation (for phonological analysis)
+  syllables: SyllableStructure[];
+}
+
+interface GraphemeSegment {
+  grapheme: string;
+  startIndex: number;
+  endIndex: number;
+  context: G2PContext;
+}
+
+interface MorphemeSegment {
+  morpheme: string;
+  type: 'root' | 'prefix' | 'suffix' | 'infix';
+  meaning?: string;
+  productivity: number;  // How freely this morpheme combines
+}
+
+interface SyllableStructure {
+  onset: string[];   // Consonants before vowel
+  nucleus: string;   // Vowel core
+  coda: string[];    // Consonants after vowel
+  isStressed: boolean;
+}
+
+/**
+ * Complete word segmentation pipeline
+ */
+async function segmentWord(
+  word: string,
+  g2pSpec: LanguageG2PSpec,
+  morphDB: MorphologicalDatabase
+): Promise<WordSegmentation> {
+  return {
+    rawWord: word,
+    graphemeSegments: segmentGraphemes(word, g2pSpec),
+    morphemeSegments: await segmentMorphemes(word, morphDB),
+    syllables: segmentSyllables(word)
+  };
+}
+
+function segmentGraphemes(word: string, spec: LanguageG2PSpec): GraphemeSegment[] {
+  const segments: GraphemeSegment[] = [];
+  let i = 0;
+
+  while (i < word.length) {
+    // Check multi-grapheme units first (longest match)
+    let matched = false;
+    for (const multi of spec.multiGraphemeUnits.sort((a, b) => b.length - a.length)) {
+      if (word.slice(i).toLowerCase().startsWith(multi)) {
+        segments.push({
+          grapheme: word.slice(i, i + multi.length),
+          startIndex: i,
+          endIndex: i + multi.length,
+          context: buildG2PContext(word, i, segments)
+        });
+        i += multi.length;
+        matched = true;
+        break;
+      }
+    }
+
+    if (!matched) {
+      segments.push({
+        grapheme: word[i],
+        startIndex: i,
+        endIndex: i + 1,
+        context: buildG2PContext(word, i, segments)
+      });
+      i++;
+    }
+  }
+
+  return segments;
+}
+```
+
+### 3.5.2 Word Organization Strategies
+
+Words can be organized by multiple axes depending on learning goals:
+
+```typescript
+type OrganizationAxis =
+  | 'frequency'        // Zipf rank
+  | 'alphabetical'     // A-Z
+  | 'morphological'    // By root family
+  | 'semantic'         // By meaning cluster
+  | 'domain'           // By usage domain
+  | 'difficulty'       // By P (phonological) score
+  | 'network'          // By R (relational) connectivity;
+
+interface WordOrganizationConfig {
+  primaryAxis: OrganizationAxis;
+  secondaryAxis?: OrganizationAxis;
+  groupingStrategy: 'flat' | 'hierarchical' | 'network';
+}
+
+interface OrganizedWordSet {
+  config: WordOrganizationConfig;
+  groups: WordGroup[];
+  totalCount: number;
+}
+
+interface WordGroup {
+  id: string;
+  label: string;
+  words: LanguageObject[];
+  subgroups?: WordGroup[];
+  metadata: {
+    avgFrequency: number;
+    avgDifficulty: number;
+    dominantDomain?: string;
+  };
+}
+```
+
+### 3.5.3 Morphological Family Organization
+
+```typescript
+interface MorphologicalFamily {
+  root: string;
+  rootMeaning: string;
+  members: MorphologicalFamilyMember[];
+  totalFamilyFrequency: number;
+  productivity: number;
+}
+
+interface MorphologicalFamilyMember {
+  word: string;
+  derivationPath: string[];  // e.g., ['construct', '-ion'] for 'construction'
+  partOfSpeech: string;
+  frequency: number;
+  semanticShift: number;  // How far meaning drifted from root (0-1)
+}
+
+/**
+ * Build morphological family tree for a root
+ */
+async function buildMorphologicalFamily(
+  root: string,
+  morphDB: MorphologicalDatabase,
+  corpus: Corpus
+): Promise<MorphologicalFamily> {
+  const derivations = await morphDB.getDerivations(root);
+
+  const members: MorphologicalFamilyMember[] = derivations.map(d => ({
+    word: d.word,
+    derivationPath: d.affixChain,
+    partOfSpeech: d.pos,
+    frequency: corpus.getFrequency(d.word),
+    semanticShift: computeSemanticShift(root, d.word)
+  }));
+
+  return {
+    root,
+    rootMeaning: await morphDB.getRootMeaning(root),
+    members: members.sort((a, b) => b.frequency - a.frequency),
+    totalFamilyFrequency: members.reduce((sum, m) => sum + m.frequency, 0),
+    productivity: computeProductivity(members)
+  };
+}
+
+function computeProductivity(members: MorphologicalFamilyMember[]): number {
+  // Productivity = diversity of derivation patterns × size
+  const uniquePatterns = new Set(members.map(m => m.derivationPath.join('+')));
+  const sizeScore = Math.log(members.length + 1) / Math.log(100);  // Normalize
+  const diversityScore = uniquePatterns.size / members.length;
+
+  return (sizeScore * 0.6 + diversityScore * 0.4);
+}
+```
+
+### 3.5.4 Multi-Layer Word Card Structure
+
+For UI representation, each word has a three-layer card structure:
+
+```typescript
+interface MultiLayerWordCard {
+  wordId: string;
+  content: string;
+
+  // Layer 1: Orthographic (spelling patterns)
+  orthographicLayer: {
+    spellingPatterns: string[];  // e.g., '-tion', 'silent-e'
+    graphemeBreakdown: GraphemeSegment[];
+    commonMisspellings: string[];
+  };
+
+  // Layer 2: Morphological (word structure)
+  morphologicalLayer: {
+    root: string;
+    affixes: MorphemeSegment[];
+    familyMembers: string[];  // Related words
+    derivationDiagram: string;  // Visual representation
+  };
+
+  // Layer 3: Semantic (meaning network)
+  semanticLayer: {
+    primaryDomain: string;
+    semanticField: string;
+    synonyms: string[];
+    antonyms: string[];
+    collocations: Array<{ word: string; pmi: number }>;
+    usageExamples: string[];
+  };
+}
+
+/**
+ * Build complete multi-layer card for a word
+ */
+async function buildMultiLayerCard(
+  wordObj: LanguageObject,
+  morphDB: MorphologicalDatabase,
+  semanticDB: SemanticDatabase,
+  g2pSpec: LanguageG2PSpec
+): Promise<MultiLayerWordCard> {
+  const segmentation = await segmentWord(wordObj.content, g2pSpec, morphDB);
+  const family = await buildMorphologicalFamily(
+    segmentation.morphemeSegments.find(m => m.type === 'root')?.morpheme ?? wordObj.content,
+    morphDB,
+    null  // corpus not needed for card building
+  );
+
+  return {
+    wordId: wordObj.id,
+    content: wordObj.content,
+
+    orthographicLayer: {
+      spellingPatterns: extractSpellingPatterns(segmentation),
+      graphemeBreakdown: segmentation.graphemeSegments,
+      commonMisspellings: await getCommonMisspellings(wordObj.content)
+    },
+
+    morphologicalLayer: {
+      root: family.root,
+      affixes: segmentation.morphemeSegments.filter(m => m.type !== 'root'),
+      familyMembers: family.members.slice(0, 10).map(m => m.word),
+      derivationDiagram: buildDerivationDiagram(family)
+    },
+
+    semanticLayer: {
+      primaryDomain: getDominantDomain(wordObj.domainDistribution),
+      semanticField: await semanticDB.getSemanticField(wordObj.content),
+      synonyms: await semanticDB.getSynonyms(wordObj.content, 5),
+      antonyms: await semanticDB.getAntonyms(wordObj.content, 3),
+      collocations: await getTopCollocations(wordObj.id, 5),
+      usageExamples: await getUsageExamples(wordObj.content, 3)
+    }
+  };
+}
+```
+
+### 3.5.5 Word Index Structure for Fast Retrieval
+
+```typescript
+interface WordIndexes {
+  // Primary index: by ID
+  byId: Map<string, LanguageObject>;
+
+  // Frequency-sorted index
+  byFrequency: LanguageObject[];
+
+  // Morphological index: root → family members
+  byRoot: Map<string, Set<string>>;
+
+  // Domain index: domain → word IDs
+  byDomain: Map<string, Set<string>>;
+
+  // Difficulty buckets for adaptive selection
+  byDifficultyBucket: Map<DifficultyBucket, Set<string>>;
+
+  // PMI-connected pairs for collocation lookup
+  collocationIndex: Map<string, Array<{ wordId: string; pmi: number }>>;
+}
+
+type DifficultyBucket = 'easy' | 'medium' | 'hard' | 'expert';
+
+function getDifficultyBucket(p: number): DifficultyBucket {
+  if (p < 0.25) return 'easy';
+  if (p < 0.5) return 'medium';
+  if (p < 0.75) return 'hard';
+  return 'expert';
+}
+
+/**
+ * Build all indexes for a goal's word set
+ */
+async function buildWordIndexes(goalId: string): Promise<WordIndexes> {
+  const words = await db.languageObject.findMany({
+    where: { goalId },
+    include: { collocations: true }
+  });
+
+  const indexes: WordIndexes = {
+    byId: new Map(),
+    byFrequency: [],
+    byRoot: new Map(),
+    byDomain: new Map(),
+    byDifficultyBucket: new Map([
+      ['easy', new Set()],
+      ['medium', new Set()],
+      ['hard', new Set()],
+      ['expert', new Set()]
+    ]),
+    collocationIndex: new Map()
+  };
+
+  for (const word of words) {
+    // By ID
+    indexes.byId.set(word.id, word);
+
+    // By root (requires morphological analysis)
+    const root = await extractRoot(word.content);
+    if (!indexes.byRoot.has(root)) {
+      indexes.byRoot.set(root, new Set());
+    }
+    indexes.byRoot.get(root)!.add(word.id);
+
+    // By domain
+    const domain = getDominantDomain(word.domainDistribution);
+    if (!indexes.byDomain.has(domain)) {
+      indexes.byDomain.set(domain, new Set());
+    }
+    indexes.byDomain.get(domain)!.add(word.id);
+
+    // By difficulty
+    const bucket = getDifficultyBucket(word.phonologicalDifficulty ?? 0.5);
+    indexes.byDifficultyBucket.get(bucket)!.add(word.id);
+
+    // Collocations
+    indexes.collocationIndex.set(
+      word.id,
+      word.collocations.map(c => ({ wordId: c.word2Id, pmi: c.pmi }))
+    );
+  }
+
+  // Sort by frequency
+  indexes.byFrequency = [...words].sort((a, b) => b.frequency - a.frequency);
+
+  return indexes;
+}
+```
+
+---
+
 # Part 4: Database Schema Optimization
 
 ## 4.1 Complete Prisma Schema
@@ -801,12 +1673,31 @@ model LanguageObject {
   content     String  // The actual word/pattern/rule
   contentJson Json?   // Full vector representation
 
-  // FRE Metrics (computed from corpus)
-  frequency            Float // F: 0-1 normalized
-  relationalDensity    Float // R: hub score
-  contextualContribution Float // E: meaning importance
+  // ========== Five-Element Feature Vector z(w) ==========
+  // F: Frequency (0-1 normalized, log-scale)
+  frequency            Float
 
+  // R: Relational Density (hub score, PMI-weighted centrality)
+  relationalDensity    Float
+
+  // E: Contextual Contribution (meaning importance) - legacy, kept for compatibility
+  contextualContribution Float
+
+  // D: Domain Distribution Vector (NEW)
+  // JSON object: {"news": 0.1, "medical": 0.8, "business": 0.05, ...}
+  domainDistribution   Json?
+
+  // M: Morphological Composition Score (NEW)
+  // Computed as: familySize × productivity × log(familyFrequencySum)
+  morphologicalScore   Float?
+
+  // P: Phonological Difficulty/Constraint (NEW)
+  // Computed as: g2pEntropy + syllableComplexity + errorPronePatterns
+  phonologicalDifficulty Float?
+
+  // ========== Computed Values ==========
   // Computed priority (denormalized for query speed)
+  // Uses S_eff formula: S_base × g(m) × contextModifier
   priority Float @default(0)
 
   // IRT parameters
@@ -823,6 +1714,8 @@ model LanguageObject {
 
   @@index([goalId, type])
   @@index([goalId, priority(sort: Desc)])
+  @@index([goalId, morphologicalScore])
+  @@index([goalId, phonologicalDifficulty])
 }
 
 model Collocation {
@@ -1647,7 +2540,9 @@ function analyzeCascadingErrors(evidence: BottleneckEvidence[]): CascadeAnalysis
 
 ---
 
-*Document Version: 1.0*
+*Document Version: 1.1*
 *Created: 2026-01-04*
+*Updated: 2026-01-04*
 *Purpose: Algorithmic depth for LOGOS implementation*
 *Domains: IRT, PMI, Spaced Repetition, Database, LLM, Linguistics*
+*New in v1.1: Section 3.3 (S_eff function), Section 3.4 (Task-Word Matching), Extended schema with D/M/P fields*
