@@ -75,7 +75,7 @@ LOGOS의 타입 시스템 기반. 모든 도메인 개념의 권위 있는 정�
 
 ---
 
-### [01-psychometric](./01-psychometric/README.md) - 심리측정 모듈
+### [01-psychometric](./01-rrpsychometric/README.md) - 심리측정 모듈
 > **의존**: 00-foundation
 
 적응형 학습의 심리측정학적 핵심. 학습자 능력 추정과 문항 선택.
