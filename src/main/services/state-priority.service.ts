@@ -22,9 +22,16 @@ import {
   type BottleneckResult,
 } from '../db/repositories/error-analysis.repository';
 import { selectNextItem, fisherInformation } from '../../core/irt';
-import type { ComponentCode, ItemParameter, GeneralizationEstimate } from '../../core/types';
+import type { ComponentCode, ItemParameter, GeneralizationEstimate, FREMetrics, LanguageObjectType } from '../../core/types';
 import { getBlockingComponents } from './component-prerequisite.service';
 import { estimateGeneralization } from './generalization-estimation.service';
+import {
+  DistributionalAnalyzer,
+  createDistributionalAnalyzer,
+  quickDistributionSummary,
+  type DistributionDimension,
+  type DistributionStatistics,
+} from '../../core/engines';
 
 // =============================================================================
 // Types
@@ -810,4 +817,253 @@ export async function getLearningQueueWithIRT(
   const reordered = applyIRTReordering(queue, theta.global, limit);
 
   return reordered.slice(0, limit);
+}
+
+// =============================================================================
+// E2 Distributional Analysis Integration
+// =============================================================================
+
+// Cached E2 analyzer instance
+let distributionalAnalyzer: DistributionalAnalyzer | null = null;
+
+/**
+ * Get or create the E2 Distributional Analyzer.
+ */
+function getDistributionalAnalyzer(): DistributionalAnalyzer {
+  if (!distributionalAnalyzer) {
+    distributionalAnalyzer = createDistributionalAnalyzer({
+      outlierThreshold: 2.5,
+      minSampleSize: 10,
+    });
+  }
+  return distributionalAnalyzer;
+}
+
+/**
+ * Analyze distribution statistics for a goal's language objects.
+ * Uses E2 DistributionalAnalyzer for advanced statistical analysis.
+ *
+ * E2 엔진의 핵심 기능:
+ * - 5차원 분포 분석 (빈도, 변이, 스타일, 복잡성, 도메인)
+ * - 통계적 이상치 탐지
+ * - 기준 분포와의 격차 분석
+ */
+export async function analyzeGoalDistribution(
+  goalId: string,
+  dimensions: DistributionDimension[] = ['frequency', 'complexity', 'style']
+): Promise<{
+  dimensionStats: Record<DistributionDimension, DistributionStatistics>;
+  outliers: Array<{
+    objectId: string;
+    dimension: DistributionDimension;
+    value: number;
+    zScore: number;
+  }>;
+  interpretation: string;
+}> {
+  const db = getPrisma();
+
+  // Get all objects with FRE metrics
+  const objects = await db.languageObject.findMany({
+    where: { goalId },
+    select: {
+      id: true,
+      type: true,
+      content: true,
+      frequency: true,
+      relationalDensity: true,
+      domainDistribution: true,
+    },
+  });
+
+  if (objects.length < 10) {
+    const emptyStats: DistributionStatistics = {
+      mean: 0,
+      stdDev: 0,
+      median: 0,
+      skewness: 0,
+      kurtosis: 0,
+      quartiles: [0, 0, 0],
+      sampleSize: 0,
+    };
+    return {
+      dimensionStats: {
+        frequency: emptyStats,
+        variance: emptyStats,
+        style: emptyStats,
+        complexity: emptyStats,
+        domain: emptyStats,
+      },
+      outliers: [],
+      interpretation: 'Not enough data for distribution analysis (need at least 10 objects).',
+    };
+  }
+
+  const analyzer = getDistributionalAnalyzer();
+
+  // Convert to E2 input format
+  const e2Objects = objects.map(obj => ({
+    id: obj.id,
+    type: obj.type as LanguageObjectType,
+    content: obj.content,
+    fre: {
+      frequency: obj.frequency,
+      relationalDensity: obj.relationalDensity,
+      contextualContribution: 0.5, // Default if not available
+    } as FREMetrics,
+  }));
+
+  // Run E2 analysis
+  const result = analyzer.process({
+    objects: e2Objects,
+    dimensions,
+  });
+
+  // Generate interpretation
+  let interpretation = '';
+
+  // Analyze frequency distribution
+  const freqStats = result.dimensionStats.frequency;
+  if (freqStats.sampleSize > 0) {
+    const { interpretation: freqInterp } = quickDistributionSummary(
+      e2Objects.map(o => o.fre?.frequency ?? 0)
+    );
+    interpretation += `Frequency: ${freqInterp} `;
+  }
+
+  // Check for outliers
+  if (result.outliers.length > 0) {
+    interpretation += `Found ${result.outliers.length} statistical outliers. `;
+    const topOutlier = result.outliers[0];
+    interpretation += `Most extreme: ${topOutlier.dimension} dimension (z=${topOutlier.zScore.toFixed(2)}).`;
+  }
+
+  return {
+    dimensionStats: result.dimensionStats,
+    outliers: result.outliers,
+    interpretation,
+  };
+}
+
+/**
+ * Detect distributional anomalies that may indicate learning issues.
+ * Uses E2's outlier detection to find objects that need special attention.
+ */
+export async function detectDistributionalAnomalies(
+  goalId: string
+): Promise<{
+  objectId: string;
+  anomalyType: 'high_frequency_low_mastery' | 'low_frequency_high_priority' | 'complexity_mismatch';
+  severity: number;
+  recommendation: string;
+}[]> {
+  const db = getPrisma();
+
+  // Get objects with mastery states
+  const objects = await db.languageObject.findMany({
+    where: { goalId },
+    include: { masteryState: true },
+  });
+
+  const anomalies: {
+    objectId: string;
+    anomalyType: 'high_frequency_low_mastery' | 'low_frequency_high_priority' | 'complexity_mismatch';
+    severity: number;
+    recommendation: string;
+  }[] = [];
+
+  // Detect: High frequency words with low mastery (should be prioritized)
+  for (const obj of objects) {
+    const mastery = obj.masteryState?.cueFreeAccuracy ?? 0;
+    const frequency = obj.frequency;
+
+    // High frequency (>0.7) but low mastery (<0.5)
+    if (frequency > 0.7 && mastery < 0.5) {
+      anomalies.push({
+        objectId: obj.id,
+        anomalyType: 'high_frequency_low_mastery',
+        severity: (frequency - mastery) * 1.5,
+        recommendation: `High-frequency item "${obj.content}" needs more practice. Consider increasing priority.`,
+      });
+    }
+
+    // Low frequency but somehow high priority (may be wasting time)
+    if (frequency < 0.3 && obj.priority > 0.8) {
+      anomalies.push({
+        objectId: obj.id,
+        anomalyType: 'low_frequency_high_priority',
+        severity: obj.priority - frequency,
+        recommendation: `Low-frequency item "${obj.content}" has high priority. Verify if intentional for domain-specific learning.`,
+      });
+    }
+  }
+
+  // Sort by severity
+  anomalies.sort((a, b) => b.severity - a.severity);
+
+  return anomalies;
+}
+
+/**
+ * Analyze vocabulary diversity using E2's TTR variants.
+ */
+export async function analyzeVocabularyDiversity(
+  goalId: string
+): Promise<{
+  ttr: number;
+  rootTtr: number;
+  logTtr: number;
+  hapaxRatio: number;
+  interpretation: string;
+}> {
+  const db = getPrisma();
+
+  const objects = await db.languageObject.findMany({
+    where: { goalId },
+    select: { content: true },
+  });
+
+  const texts = objects.map(o => o.content);
+  const analyzer = getDistributionalAnalyzer();
+  const diversity = analyzer.analyzeVocabularyDiversity(texts);
+
+  let interpretation = '';
+
+  if (diversity.ttr > 0.8) {
+    interpretation = 'Very high vocabulary diversity - content covers many unique terms.';
+  } else if (diversity.ttr > 0.5) {
+    interpretation = 'Moderate vocabulary diversity - balanced mix of common and unique terms.';
+  } else {
+    interpretation = 'Low vocabulary diversity - content focuses on core, repeated terms.';
+  }
+
+  if (diversity.hapaxRatio > 0.5) {
+    interpretation += ' Many single-occurrence words may require additional practice.';
+  }
+
+  return {
+    ...diversity,
+    interpretation,
+  };
+}
+
+/**
+ * Classify overall style of goal content using E2.
+ */
+export async function classifyGoalStyle(
+  goalId: string
+): Promise<{
+  overallStyle: 'formal' | 'neutral' | 'informal';
+  formalScore: number;
+  distribution: { formal: number; neutral: number; informal: number };
+}> {
+  const db = getPrisma();
+
+  const objects = await db.languageObject.findMany({
+    where: { goalId },
+    select: { content: true },
+  });
+
+  const analyzer = getDistributionalAnalyzer();
+  return analyzer.classifyStyle(objects);
 }

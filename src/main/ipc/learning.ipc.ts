@@ -24,6 +24,7 @@ import {
   type EnhancedTaskGenerationConfig,
 } from '../services/task-generation.service';
 import type { LearningQueueItem } from '../services/state-priority.service';
+import { getUserPriorityWeights } from './profile.ipc';
 
 // ============================================================================
 // Handler Registration
@@ -237,11 +238,13 @@ export function registerLearningHandlers(): void {
         }
       }
 
-      // Build user state
+      // Build user state with priority weights
+      // User custom weights take precedence over level-based defaults
       const level = inferLevel(theta);
+      const customWeights = getUserPriorityWeights();
       const userState: UserState = {
         theta,
-        weights: getWeightsForLevel(level),
+        weights: customWeights ?? getWeightsForLevel(level),
         l1Language: user?.nativeLanguage || undefined,
       };
 
@@ -263,6 +266,10 @@ export function registerLearningHandlers(): void {
         focusDomain: goal?.domain,
       };
 
+      // Generate tasks with individual timeouts to prevent blocking
+      // Each task generation has 10s timeout; failures return null task
+      const TASK_GENERATION_TIMEOUT = 10000; // 10 seconds per task
+
       const tasksWithItems = await Promise.all(
         sessionItems.map(async (item) => {
           try {
@@ -280,7 +287,15 @@ export function registerLearningHandlers(): void {
               urgencyScore: item.urgency,
             };
 
-            const task = await getOrGenerateTaskWithMatching(learningItem, config);
+            // Race between task generation and timeout
+            const taskPromise = getOrGenerateTaskWithMatching(learningItem, config);
+            const timeoutPromise = new Promise<null>((_, reject) =>
+              setTimeout(() => reject(new Error('Task generation timeout')), TASK_GENERATION_TIMEOUT)
+            );
+
+            const task = await Promise.race([taskPromise, timeoutPromise]);
+            if (!task) throw new Error('Task generation returned null');
+
             return {
               ...mapQueueItemToResponse(item),
               task: {
@@ -297,7 +312,7 @@ export function registerLearningHandlers(): void {
             };
           } catch (err) {
             console.error(`Failed to generate task for ${item.object.id}:`, err);
-            // Return item without task on error
+            // Return item without task on error (client can request individual task later)
             return {
               ...mapQueueItemToResponse(item),
               task: null,
@@ -451,9 +466,10 @@ export function registerLearningHandlers(): void {
       }
 
       const level = inferLevel(theta);
+      const customWeights = getUserPriorityWeights();
       const userState: UserState = {
         theta,
-        weights: getWeightsForLevel(level),
+        weights: customWeights ?? getWeightsForLevel(level),
         l1Language: user?.nativeLanguage || undefined,
       };
 

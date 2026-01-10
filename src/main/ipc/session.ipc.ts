@@ -19,6 +19,11 @@ import {
 import type { FSRSResponseData } from '../../core/fsrs';
 import { evaluateObject, type ObjectEvaluationInput, type ObjectEvaluationResult } from '../services/multi-layer-evaluation.service';
 import type { ComponentCode, ObjectRole, TaskType, MasteryStage, TaskFormat } from '../../core/types';
+import {
+  SessionOptimizer,
+  createSessionOptimizer,
+  type InterleavingStrategy,
+} from '../../core/engines';
 
 // =============================================================================
 // IRT Calibration Configuration
@@ -145,20 +150,19 @@ export function registerSessionHandlers(): void {
         ? (session.endedAt.getTime() - session.startedAt.getTime()) / 1000 / 60
         : 0;
 
-      // Run IRT calibration if configured and sufficient data exists
-      let calibrationResult: {
-        calibrated: boolean;
-        itemsUpdated: number;
-        reason?: string;
-      } = { calibrated: false, itemsUpdated: 0 };
-
+      // Schedule IRT calibration asynchronously (non-blocking)
+      // This runs in the background and doesn't delay session:end response
+      let calibrationScheduled = false;
       if (IRT_CALIBRATION_CONFIG.autoCalibrate && totalResponses >= IRT_CALIBRATION_CONFIG.minResponsesPerItem) {
-        try {
-          calibrationResult = await runIRTCalibration(session.goalId);
-        } catch (calibErr) {
-          console.warn('IRT calibration skipped:', calibErr);
-          calibrationResult.reason = calibErr instanceof Error ? calibErr.message : 'Unknown calibration error';
-        }
+        calibrationScheduled = true;
+        // Fire and forget - calibration runs in background
+        runIRTCalibration(session.goalId)
+          .then(result => {
+            console.log(`[IRT] Background calibration completed: ${result.itemsUpdated} items updated`);
+          })
+          .catch(calibErr => {
+            console.warn('[IRT] Background calibration failed:', calibErr instanceof Error ? calibErr.message : calibErr);
+          });
       }
 
       return success({
@@ -170,7 +174,10 @@ export function registerSessionHandlers(): void {
           accuracy,
           durationMinutes: Math.round(duration * 10) / 10,
         },
-        calibration: calibrationResult,
+        calibration: {
+          scheduled: calibrationScheduled,
+          reason: calibrationScheduled ? 'Running in background' : 'Not enough responses',
+        },
       });
     } catch (err) {
       console.error('Failed to end session:', err);
@@ -1100,6 +1107,178 @@ async function runIRTCalibration(goalId: string): Promise<{
     calibrated: itemsUpdated > 0,
     itemsUpdated,
   };
+}
+
+// =============================================================================
+// E5 Session Orchestration Engine Integration
+// =============================================================================
+
+// Cached E5 engine instance
+let sessionEngine: SessionOptimizer | null = null;
+
+/**
+ * Get or create the E5 Session Optimization Engine.
+ */
+function getSessionEngine(targetRetention: number = 0.9): SessionOptimizer {
+  if (!sessionEngine) {
+    sessionEngine = createSessionOptimizer({
+      maxCognitiveLoad: 7,
+      breakIntervalMinutes: 25,
+      defaultStrategy: 'adaptive',
+      targetRetention,
+    });
+  }
+  return sessionEngine;
+}
+
+/**
+ * Get session break recommendations based on cognitive load tracking.
+ *
+ * E5 엔진의 세션 관리 기능 활용:
+ * - Pomodoro 기반 타이밍
+ * - 인지 부하 기반 휴식 추천
+ * - 항목 수 기반 휴식 추천
+ */
+export function getBreakRecommendations(
+  elapsedMinutes: number,
+  itemsCompleted: number,
+  averageCognitiveLoad: number
+): {
+  shouldTakeBreak: boolean;
+  recommendedBreakDuration: number;
+  reason: string;
+} {
+  // Check time-based break (Pomodoro)
+  if (elapsedMinutes >= 25) {
+    return {
+      shouldTakeBreak: true,
+      recommendedBreakDuration: 5,
+      reason: 'Pomodoro interval reached (25 minutes)',
+    };
+  }
+
+  // Check cognitive load-based break
+  if (averageCognitiveLoad > 0.8 && itemsCompleted >= 10) {
+    return {
+      shouldTakeBreak: true,
+      recommendedBreakDuration: 3,
+      reason: 'High cognitive load detected',
+    };
+  }
+
+  // Check item count-based break
+  if (itemsCompleted >= 20) {
+    return {
+      shouldTakeBreak: true,
+      recommendedBreakDuration: 5,
+      reason: 'Completed significant number of items',
+    };
+  }
+
+  return {
+    shouldTakeBreak: false,
+    recommendedBreakDuration: 0,
+    reason: '',
+  };
+}
+
+/**
+ * Select optimal interleaving strategy based on learner level and session goals.
+ * Uses E5 engine's strategy selection logic.
+ */
+export function selectInterleavingStrategy(
+  cefrLevel: string,
+  sessionMode: 'learning' | 'training' | 'evaluation'
+): InterleavingStrategy {
+  // Beginners benefit more from blocking (grouped practice)
+  if (cefrLevel === 'A1' || cefrLevel === 'A2') {
+    return sessionMode === 'learning' ? 'pure_blocking' : 'hybrid';
+  }
+
+  // Intermediate learners benefit from related item grouping
+  if (cefrLevel === 'B1' || cefrLevel === 'B2') {
+    return 'related';
+  }
+
+  // Advanced learners benefit from full interleaving
+  if (cefrLevel === 'C1' || cefrLevel === 'C2') {
+    return sessionMode === 'evaluation' ? 'pure_interleaving' : 'adaptive';
+  }
+
+  // Default to adaptive
+  return 'adaptive';
+}
+
+/**
+ * Get session timing analytics based on completed items.
+ */
+export function getSessionTimingAnalytics(
+  completedItems: Array<{
+    objectId: string;
+    responseTimeMs: number;
+    cognitiveLoad: number;
+    correct: boolean;
+  }>
+): {
+  averageResponseTime: number;
+  averageCognitiveLoad: number;
+  accuracy: number;
+  estimatedFatigueLevel: number;
+  pace: 'fast' | 'normal' | 'slow';
+} {
+  if (completedItems.length === 0) {
+    return {
+      averageResponseTime: 0,
+      averageCognitiveLoad: 0,
+      accuracy: 0,
+      estimatedFatigueLevel: 0,
+      pace: 'normal',
+    };
+  }
+
+  const totalResponseTime = completedItems.reduce((sum, item) => sum + item.responseTimeMs, 0);
+  const totalCognitiveLoad = completedItems.reduce((sum, item) => sum + item.cognitiveLoad, 0);
+  const correctCount = completedItems.filter(item => item.correct).length;
+
+  const averageResponseTime = totalResponseTime / completedItems.length;
+  const averageCognitiveLoad = totalCognitiveLoad / completedItems.length;
+  const accuracy = correctCount / completedItems.length;
+
+  // Estimate fatigue based on response time trend
+  const recentItems = completedItems.slice(-5);
+  const earlyItems = completedItems.slice(0, 5);
+  const recentAvg = recentItems.length > 0
+    ? recentItems.reduce((sum, item) => sum + item.responseTimeMs, 0) / recentItems.length
+    : 0;
+  const earlyAvg = earlyItems.length > 0
+    ? earlyItems.reduce((sum, item) => sum + item.responseTimeMs, 0) / earlyItems.length
+    : 1; // Avoid division by zero
+  const timeIncrease = earlyAvg > 0 ? (recentAvg - earlyAvg) / earlyAvg : 0;
+  const estimatedFatigueLevel = Math.min(1, Math.max(0, timeIncrease));
+
+  // Determine pace
+  let pace: 'fast' | 'normal' | 'slow' = 'normal';
+  if (averageResponseTime < 3000) {
+    pace = 'fast';
+  } else if (averageResponseTime > 10000) {
+    pace = 'slow';
+  }
+
+  return {
+    averageResponseTime,
+    averageCognitiveLoad,
+    accuracy,
+    estimatedFatigueLevel,
+    pace,
+  };
+}
+
+/**
+ * Access the E5 engine directly for advanced session optimization.
+ * Use this when you need full control over session optimization parameters.
+ */
+export function getE5Engine(): SessionOptimizer {
+  return getSessionEngine();
 }
 
 export function unregisterSessionHandlers(): void {

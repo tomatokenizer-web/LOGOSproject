@@ -32,6 +32,14 @@ import { updateObjectPriority } from '../db/repositories/goal.repository';
 import type { GeneratedTask, TaskSpec } from './task-generation.service';
 import { calculateEffectivePriority, calculateMasteryAdjustment, calculateUrgencyScore } from './state-priority.service';
 import { calibrateItems } from '../../core/irt';
+import {
+  FlexibleEvaluationEngine,
+  createEvaluationEngine,
+  detectTextGenre,
+  quickFormEvaluation,
+  type AdaptiveEvaluationResult,
+  type TextGenreClassification,
+} from '../../core/engines';
 
 // =============================================================================
 // Types
@@ -833,4 +841,146 @@ export async function triggerSessionEndCalibration(goalId: string): Promise<numb
   }
 
   return calibratedCount;
+}
+
+// =============================================================================
+// E3 Flexible Evaluation Engine Integration
+// =============================================================================
+
+// Cached E3 engine instance
+let evaluationEngine: FlexibleEvaluationEngine | null = null;
+
+/**
+ * Get or create the E3 Flexible Evaluation Engine.
+ */
+function getEvaluationEngine(): FlexibleEvaluationEngine {
+  if (!evaluationEngine) {
+    evaluationEngine = createEvaluationEngine({
+      defaultMode: 'partial_credit',
+      defaultThreshold: 0.6,
+      strictness: 'normal',
+      autoDetectGenre: true,
+    });
+  }
+  return evaluationEngine;
+}
+
+/**
+ * Evaluate response using E3's multi-layer adaptive evaluation.
+ *
+ * E3 엔진의 핵심 기능:
+ * - 장르 자동 감지 및 프로파일 매칭
+ * - CEFR 수준별 층 가중치 동적 조정
+ * - 4층 평가 (form, meaning, pragmatics, style)
+ * - 부분 점수 및 상세 피드백
+ *
+ * @param response - User's response
+ * @param expected - Expected answers (multiple acceptable)
+ * @param learnerLevel - CEFR level (A1-C2)
+ * @param genre - Optional genre classification
+ */
+export function evaluateResponseAdaptive(
+  response: string,
+  expected: string[],
+  learnerLevel?: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2',
+  genre?: TextGenreClassification
+): AdaptiveEvaluationResult {
+  const engine = getEvaluationEngine();
+
+  return engine.process({
+    response,
+    expected,
+    learnerLevel,
+    genre,
+  });
+}
+
+/**
+ * Evaluate response with rubric-based detailed scoring.
+ * For complex production tasks (essays, emails, etc.)
+ */
+export function evaluateWithRubric(
+  response: string,
+  rubric: Array<{
+    criterion: string;
+    maxScore: number;
+    descriptors: Array<{ score: number; description: string }>;
+  }>
+): {
+  totalScore: number;
+  maxPossible: number;
+  percentage: number;
+  criterionScores: Array<{
+    criterion: string;
+    score: number;
+    maxScore: number;
+    matchedDescriptor: string;
+  }>;
+} {
+  const engine = getEvaluationEngine();
+  return engine.evaluateWithRubric(response, rubric);
+}
+
+/**
+ * Quick form-only evaluation for simple recognition tasks.
+ * Faster than full adaptive evaluation when only form accuracy matters.
+ */
+export function quickEvaluateForm(
+  response: string,
+  expected: string[]
+): { score: number; bestMatch: string; isExact: boolean } {
+  return quickFormEvaluation(response, expected);
+}
+
+/**
+ * Detect text genre for appropriate evaluation profile selection.
+ */
+export function detectGenreForEvaluation(text: string): TextGenreClassification {
+  return detectTextGenre(text);
+}
+
+/**
+ * Get available genre evaluation profiles.
+ */
+export function getGenreProfiles() {
+  const engine = getEvaluationEngine();
+  return engine.getGenreProfiles();
+}
+
+/**
+ * Enhanced response evaluation combining basic and E3 adaptive evaluation.
+ * Uses E3 for complex responses, basic evaluation for simple ones.
+ */
+type CEFRLevel = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
+
+export function evaluateResponseEnhanced(
+  userResponse: string,
+  expectedAnswer: string,
+  config: ScoringConfig,
+  learnerLevel?: CEFRLevel
+): EvaluationResult & { adaptiveResult?: AdaptiveEvaluationResult } {
+  // Use basic evaluation for simple, short responses
+  const basicResult = evaluateResponse(userResponse, expectedAnswer, config);
+
+  // If response is short and correct, no need for adaptive evaluation
+  if (basicResult.correct && userResponse.split(/\s+/).length < 5) {
+    return basicResult;
+  }
+
+  // Use E3 adaptive evaluation for complex or incorrect responses
+  const adaptiveResult = evaluateResponseAdaptive(
+    userResponse,
+    [expectedAnswer],
+    learnerLevel
+  );
+
+  // Combine results
+  return {
+    ...basicResult,
+    // Override with adaptive result if it provides better feedback
+    partialCredit: adaptiveResult.compositeScore,
+    feedback: adaptiveResult.feedback || basicResult.feedback,
+    explanation: adaptiveResult.explanation || basicResult.explanation,
+    adaptiveResult,
+  };
 }

@@ -373,3 +373,324 @@ export * from './state';
 
 // Register profiling
 export * from './register';
+
+// =============================================================================
+// Lexical - Vocabulary Analysis (LEX Objects)
+// =============================================================================
+
+export {
+  // Types
+  type LexicalPOS,
+  type FrequencyBand,
+  type WordFamily,
+  type CollocationPattern,
+  type LexicalAnalysis,
+  type LexicalVector,
+  type LexicalObject,
+  type VocabularyProfile,
+  // Functions
+  tokenize,
+  extractLemma as extractLexicalLemma,
+  estimatePOS,
+  getFrequencyBand,
+  isAWL,
+  detectDomains,
+  detectRegister,
+  estimatePolysemy,
+  estimateConcreteness,
+  estimateImageability,
+  calculateLexicalDifficulty,
+  analyzeLexical,
+  toLexicalVector,
+  extractLexicalObjects,
+  createVocabularyProfile,
+  getLexicalDifficultyCategory,
+  filterByDifficulty,
+  filterByFrequencyBand,
+  filterByDomain,
+  sortByLearningPriority,
+} from './lexical';
+
+// =============================================================================
+// Automatization - Procedural Skill Acquisition
+// =============================================================================
+
+export {
+  // Types
+  type ResponseObservation,
+  type PowerLawModel,
+  type CVAnalysis,
+  type SpeedAccuracyAnalysis,
+  type TransferAnalysis,
+  type InterferenceAnalysis,
+  type AutomatizationProfile,
+  type AutomatizationCategory,
+  // Constants
+  CV_THRESHOLDS,
+  AUTOMATIZATION_THRESHOLDS,
+  RT_THRESHOLDS,
+  MIN_OBSERVATIONS,
+  // Functions
+  isValidObservation,
+  calculateCV,
+  fitPowerLaw,
+  analyzeSpeedAccuracy,
+  analyzeTransfer,
+  analyzeInterference,
+  calculateAutomatizationLevel,
+  getAutomatizationCategory,
+  estimateStageFromAutomatization,
+  calculateTrend,
+  createAutomatizationProfile,
+  suggestPracticeConditions,
+  recommendRating,
+  isReadyForReducedPractice,
+  calculateRetrievalStrength,
+} from './automatization';
+
+// =============================================================================
+// Multi-Object Selection - Stage 3 Task Composition
+// =============================================================================
+
+export {
+  // Types
+  type ObjectSelectionProfile,
+  type CombinationFeasibility,
+  type CombinationRisk,
+  type CombinationBenefit,
+  type ObjectGrouping,
+  type SelectionStrategy,
+  // Constants
+  DEFAULT_SELECTION_STRATEGY,
+  COMPONENT_COGNITIVE_LOAD,
+  STAGE_COMPATIBILITY,
+  COMPONENT_INTERACTIONS,
+  // Functions
+  calculateCombinedCognitiveLoad,
+  estimateCombinedDifficulty,
+  predictCombinedSuccess,
+  identifyRisks,
+  identifyBenefits,
+  evaluateCombinationFeasibility,
+  selectSupportingObjects,
+  determineTaskType,
+  createObjectGroupingBatch,
+} from './multi-object-selection';
+
+// =============================================================================
+// Transfer Prediction - Within-L2 Transfer Effects
+// =============================================================================
+
+export {
+  // Types
+  type TransferType,
+  type TransferDirection,
+  type TransferRelation,
+  type TransferPrediction,
+  type ObjectLearningState,
+  type TransferNetwork,
+  type BatchTransferResult,
+  type DecayFunction,
+  type TransferModelConfig,
+  // Constants
+  DEFAULT_TRANSFER_RATES,
+  TRANSFER_ASYMMETRY,
+  STAGE_TRANSFER_MODIFIER,
+  DEFAULT_TRANSFER_CONFIG,
+  // Functions
+  calculateTransferDecay,
+  calculateEffectiveTransfer,
+  predictTransfer,
+  aggregatePredictions,
+  buildTransferNetwork,
+  calculateIndirectTransfer,
+  generateBatchTransferPredictions,
+  estimateTransferStrength,
+  createTransferRelation,
+} from './transfer-prediction';
+
+// =============================================================================
+// Component Evaluation - Component-Specific Scoring
+// =============================================================================
+
+export {
+  // Types
+  type EvaluationCriterion,
+  type ErrorCategory,
+  type ComponentEvaluationProfile,
+  type StageRequirement,
+  type ComponentEvaluationResult,
+  type MultiComponentEvaluationResult,
+  type CascadeEffect,
+  // Constants
+  STANDARD_RUBRIC,
+  LEX_PROFILE,
+  MORPH_PROFILE,
+  G2P_PROFILE,
+  SYN_PROFILE,
+  PRAG_PROFILE,
+  COMPONENT_PROFILES,
+  // Functions
+  getComponentProfile,
+  evaluateResponse,
+  checkStageProgression,
+  evaluateMultiComponent,
+} from './component-evaluation';
+
+// =============================================================================
+// Indirect Update - Learning Propagation
+// =============================================================================
+
+export {
+  // Types
+  type ObjectUpdateEvent,
+  type UpdateType,
+  type IndirectUpdate,
+  type PropagationResult,
+  type ObjectPropagationState,
+  type PropagationConfig,
+  type UpdateHistoryEntry,
+  // Constants
+  DEFAULT_PROPAGATION_CONFIG,
+  STAGE_IMPROVEMENT_WEIGHTS,
+  // Functions
+  calculateBaseMagnitude,
+  calculatePropagationMagnitude,
+  calculateDifficultyAdjustment,
+  calculateStabilityBoost,
+  calculatePriorityAdjustment,
+  createIndirectUpdate,
+  propagateUpdate,
+  applyIndirectUpdates,
+  filterByMagnitude,
+  groupByTarget,
+  aggregateUpdates,
+  createHistoryEntry,
+  summarizePropagation,
+} from './indirect-update';
+
+// =============================================================================
+// Milestone Events - Achievement Tracking
+// =============================================================================
+
+export {
+  // Types
+  type MilestoneType,
+  type MilestonePriority,
+  type MilestoneEvent,
+  type MilestoneData,
+  type MilestoneDefinition,
+  type MilestoneDetector,
+  type MilestoneDetectionResult,
+  type LearnerProgressState,
+  type MilestoneListener,
+  type MilestoneRegistryConfig,
+  type MilestoneStats,
+  // Constants
+  DEFAULT_MILESTONE_CONFIG,
+  STAGE_TRANSITION_MILESTONES,
+  ACCURACY_MILESTONES,
+  VOCABULARY_MILESTONES,
+  STREAK_MILESTONES,
+  FIRST_MASTERY_MILESTONE,
+  PERFECT_SESSION_MILESTONE,
+  DEFAULT_MILESTONES,
+  // Class
+  MilestoneRegistry,
+  // Functions
+  createEmptyProgressState,
+  getMilestonePriorityOrder,
+  sortMilestonesByPriority,
+  filterMilestonesByType,
+  calculateTotalPoints,
+  groupMilestonesByType,
+  summarizeMilestones,
+} from './milestone-events';
+
+// =============================================================================
+// Component Vectors - Component-Specific z(w) Vector System
+// =============================================================================
+
+export {
+  // Component Code Types
+  type ComponentCode,
+  type CEFRLevel as ComponentCEFRLevel,
+  type CognitiveProcess,
+  type LearningGoal,
+  type TaskType as ComponentTaskType,
+
+  // Base Vector
+  type BaseComponentVector,
+
+  // Component-Specific Vectors
+  type PHONVector,
+  type MORPHVector,
+  type LEXVector as ComponentLEXVector,
+  type SYNTVector,
+  type PRAGVector,
+  type ComponentVector,
+
+  // Supporting Types
+  type PredictedMispronunciation,
+  type Affix as ComponentAffix,
+  type CollocationEntry,
+  type CognateStatus,
+  type FrequencyBand as ComponentFrequencyBand,
+  type LexicalPOS as ComponentLexicalPOS,
+  type SubordinateClauseType as ComponentSubordinateClauseType,
+  type SpeechActType,
+  type IllocutionaryForce,
+  type FormalityLevel,
+  type PolitenessStrategy,
+  type InterlocutorRelationship,
+  type PragmaticInterference,
+
+  // Priority Calculation
+  type PriorityWeights as ComponentPriorityWeights,
+  type ComponentUserState,
+  type GoalContext,
+  type ComponentPriorityCalculation,
+
+  // Task Design
+  type TaskFormat,
+  type CueLevelType,
+  type ComponentTaskDesignParams,
+
+  // Learning Trajectory
+  type TrajectoryKeyFactor,
+  type LearningTrajectoryPrediction,
+
+  // Type Guards
+  isPHONVector,
+  isMORPHVector,
+  isLEXVector,
+  isSYNTVector,
+  isPRAGVector,
+
+  // Cost Modifier Functions
+  computePHONCostModifier,
+  computeMORPHCostModifier,
+  computeLEXCostModifier,
+  computeSYNTCostModifier,
+  computePRAGCostModifier,
+  computeComponentCostModifier,
+
+  // Priority Functions
+  computeFREFromVector,
+  computeComponentPriority,
+
+  // Task Design Functions
+  generateTaskDesignParams,
+
+  // Trajectory Prediction
+  predictLearningTrajectory,
+
+  // Constants
+  DEFAULT_PRIORITY_WEIGHTS as COMPONENT_DEFAULT_PRIORITY_WEIGHTS,
+  MAX_COLLOCATIONS,
+  MAX_MISPRONUNCIATIONS,
+  MAX_KEY_FACTORS,
+  MAX_INTERVENTIONS,
+  MAX_CONTEXTS,
+  MAX_TASK_TYPES,
+} from './component-vectors';

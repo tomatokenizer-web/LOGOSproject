@@ -40,3 +40,5 @@ This pattern also enables tree-shaking: bundlers can analyze the explicit export
   - Progress tracking imports `CognitiveInduction` and `IRTMetrics`
 
 - **Package Boundary**: This file effectively defines the `@logos/core/state` package boundary—everything exported here is public, everything else in the directory is implementation detail.
+
+- **`./fluency-diversity-state`**: (Pending export addition) Detailed fluency and diversity tracking that extends the cognitive metrics in ComponentObjectState with comprehensive response time analysis, context usage tracking, and production sample monitoring. See `fluency-diversity-state.md` for full documentation.

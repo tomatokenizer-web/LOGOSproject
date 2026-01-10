@@ -46,3 +46,39 @@ export {
   createSearchEngine,
   createSearchEngineWithData,
 } from './component-search-engine';
+
+// Fluency-Diversity State Tracking
+export {
+  // Types
+  type RTObservation,
+  type FluencyMetrics,
+  type FluencyCategory,
+  type ContextUsage,
+  type ProductionSample,
+  type DiversityMetrics,
+  type DiversityCategory,
+  type FluencyDiversityProfile,
+  type FluencyDiversityState,
+  // Constants
+  FLUENCY_RT_THRESHOLDS,
+  FLUENCY_CV_THRESHOLDS,
+  DIVERSITY_THRESHOLDS,
+  // Factory Functions
+  createFluencyDiversityState,
+  // State Update Functions
+  recordRTObservation,
+  recordContextUsage,
+  recordProductionSample,
+  // Metric Calculation
+  calculateFluencyMetrics,
+  calculateDiversityMetrics,
+  estimateStageFromFluencyDiversity,
+  generateRecommendations,
+  createFluencyDiversityProfile,
+  // Utility Functions
+  needsRefresh,
+  updateCache,
+  serializeState,
+  deserializeState,
+  mergeStates,
+} from './fluency-diversity-state';

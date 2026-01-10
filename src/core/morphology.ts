@@ -332,6 +332,19 @@ export interface MorphologicalFamily {
   /** Family size (number of derivatives) */
   familySize: number;
 
+  /**
+   * Family frequency sum: sum of corpus frequencies of all family members.
+   *
+   * Based on MorphoLex database (Sánchez-Gutiérrez et al., 2018):
+   * - Higher familyFrequencySum = more exposure opportunities
+   * - Correlates with faster morphological decomposition
+   * - Important for transfer effect prediction
+   *
+   * Note: When corpus frequencies are unavailable, estimated from
+   * word length and derivation complexity heuristics.
+   */
+  familyFrequencySum: number;
+
   /** Productivity score (how actively root generates new words) */
   productivity: number;
 
@@ -353,6 +366,8 @@ export interface MultiLayerWordCard {
     root: string;
     affixes: Affix[];
     familySize: number;
+    /** Sum of corpus frequencies of all family members (MorphoLex metric) */
+    familyFrequencySum: number;
     productivity: number;
   };
   semantic: {
@@ -609,6 +624,7 @@ const COMMON_ROOTS: Record<string, string[]> = {
  *
  * @param root - Root word or stem
  * @param knownWords - Optional corpus of known words to search
+ * @param wordFrequencies - Optional map of word->frequency for familyFrequencySum
  * @returns Morphological family with derivatives
  *
  * @example
@@ -616,12 +632,14 @@ const COMMON_ROOTS: Record<string, string[]> = {
  * const family = buildMorphologicalFamily('act');
  * // family.derivatives = ['action', 'active', 'react', 'actor', ...]
  * // family.familySize = 8
+ * // family.familyFrequencySum = 15420 (sum of all derivatives' frequencies)
  * // family.productivity = 0.85
  * ```
  */
 export function buildMorphologicalFamily(
   root: string,
-  knownWords?: string[]
+  knownWords?: string[],
+  wordFrequencies?: Map<string, number>
 ): MorphologicalFamily {
   const normalized = root.toLowerCase().trim();
   const derivatives: Set<string> = new Set();
@@ -687,13 +705,140 @@ export function buildMorphologicalFamily(
   const affixDiversity = affixesUsed.size;
   const productivity = Math.min(1, (familySize * 0.1) + (affixDiversity * 0.05) + 0.3);
 
+  // 6. Calculate familyFrequencySum
+  // Sum of corpus frequencies of all family members
+  // Based on MorphoLex database methodology (Sánchez-Gutiérrez et al., 2018)
+  const familyFrequencySum = calculateFamilyFrequencySum(
+    normalized,
+    Array.from(derivatives),
+    wordFrequencies
+  );
+
   return {
     root: normalized,
     derivatives: Array.from(derivatives).slice(0, 50), // Limit for practical use
     familySize,
+    familyFrequencySum,
     productivity,
     affixesUsed: Array.from(affixesUsed)
   };
+}
+
+/**
+ * Calculate the sum of corpus frequencies for all members of a morphological family.
+ *
+ * This metric (familyFrequencySum) is based on MorphoLex database research:
+ * - Sánchez-Gutiérrez, C. H., et al. (2018). MorphoLex: A derivational morphological
+ *   database for 70,000 English words.
+ *
+ * familyFrequencySum predicts:
+ * - Speed of morphological decomposition (higher = faster)
+ * - Likelihood of recognizing novel derivatives
+ * - Transfer learning potential from root to derivatives
+ *
+ * When corpus frequencies are unavailable, we estimate using:
+ * - Word length heuristic (shorter words tend to be more frequent)
+ * - Derivation complexity (base forms more frequent than complex derivatives)
+ * - Root frequency estimation from common word lists
+ *
+ * @param root - The root word
+ * @param derivatives - List of derivative words
+ * @param wordFrequencies - Optional map of word -> corpus frequency
+ * @returns Sum of frequencies (real or estimated)
+ */
+export function calculateFamilyFrequencySum(
+  root: string,
+  derivatives: string[],
+  wordFrequencies?: Map<string, number>
+): number {
+  let sum = 0;
+
+  // Include the root itself
+  const allFamilyMembers = [root, ...derivatives];
+
+  for (const word of allFamilyMembers) {
+    const wordLower = word.toLowerCase();
+
+    if (wordFrequencies && wordFrequencies.has(wordLower)) {
+      // Use actual corpus frequency if available
+      sum += wordFrequencies.get(wordLower)!;
+    } else {
+      // Estimate frequency using heuristics
+      sum += estimateWordFrequency(wordLower, root);
+    }
+  }
+
+  return sum;
+}
+
+/**
+ * Estimate word frequency when corpus data is unavailable.
+ *
+ * Heuristics based on:
+ * - Zipf's law: word frequency inversely proportional to rank
+ * - Shorter words tend to be more frequent
+ * - Base/root forms more frequent than derived forms
+ * - Common affixes produce more frequent words
+ *
+ * @param word - Word to estimate frequency for
+ * @param root - Root of the morphological family
+ * @returns Estimated frequency (per million words scale)
+ */
+function estimateWordFrequency(word: string, root: string): number {
+  // Base frequency estimate (per million words)
+  let estimate = 100;
+
+  // 1. Length penalty: longer words are typically less frequent
+  // Based on Zipf's law correlations
+  const lengthPenalty = Math.max(0.1, 1 - (word.length - 4) * 0.1);
+  estimate *= lengthPenalty;
+
+  // 2. Root bonus: if word IS the root, it's typically more frequent
+  if (word === root) {
+    estimate *= 3;
+  }
+
+  // 3. Common word bonus: check against high-frequency patterns
+  if (isCommonWordPattern(word)) {
+    estimate *= 2;
+  }
+
+  // 4. Derivation complexity penalty
+  const analysis = analyzeMorphology(word);
+  const morphemeCount = analysis.morphemeCount;
+  if (morphemeCount > 2) {
+    estimate *= Math.pow(0.7, morphemeCount - 2); // Diminishing with complexity
+  }
+
+  // 5. Common suffix bonus (productive suffixes produce frequent words)
+  const commonSuffixes = ['ing', 'ed', 'er', 'ly', 'tion', 'ness', 's', 'es'];
+  for (const suffix of commonSuffixes) {
+    if (word.endsWith(suffix)) {
+      estimate *= 1.3;
+      break;
+    }
+  }
+
+  // 6. Domain-specific penalty (technical words less frequent in general corpus)
+  if (word.length > 10 && (word.includes('ology') || word.includes('ization'))) {
+    estimate *= 0.5;
+  }
+
+  return Math.round(estimate);
+}
+
+/**
+ * Check if word matches common high-frequency patterns.
+ */
+function isCommonWordPattern(word: string): boolean {
+  // Common short words and patterns
+  const commonPatterns = [
+    /^(be|have|do|make|get|go|come|take|see|know|want|use|find|give|tell)$/i,
+    /^(time|year|people|way|day|man|woman|child|world|life|hand|part|place)$/i,
+    /^(good|new|first|last|long|great|little|own|other|old|right|big|high)$/i,
+  ];
+
+  return commonPatterns.some(pattern => pattern.test(word));
 }
 
 // ============================================================================
@@ -849,6 +994,7 @@ export function buildMultiLayerWordCard(
       root: analysis.root,
       affixes: [...analysis.prefixes, ...analysis.suffixes],
       familySize: family.familySize,
+      familyFrequencySum: family.familyFrequencySum,
       productivity: family.productivity
     },
     semantic: {

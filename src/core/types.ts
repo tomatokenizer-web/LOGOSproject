@@ -1142,14 +1142,31 @@ export interface User {
 }
 
 /**
+ * User-customizable FRE priority weights
+ * Used in UserSettings for custom weight configuration
+ * Note: Different from PriorityWeights in line 678 which includes multipliers
+ */
+export interface UserFREWeights {
+  /** Frequency weight (0-1) */
+  f: number;
+  /** Relational density weight (0-1) */
+  r: number;
+  /** Contextual contribution weight (0-1) */
+  e: number;
+}
+
+/**
  * User application settings
  */
 export interface UserSettings {
   /** Theme preference */
   theme: 'light' | 'dark' | 'system';
 
-  /** Daily goal (minutes) */
+  /** Daily learning goal in minutes */
   dailyGoal: number;
+
+  /** Session length in minutes */
+  sessionLength: number;
 
   /** Notifications enabled */
   notificationsEnabled: boolean;
@@ -1157,17 +1174,11 @@ export interface UserSettings {
   /** Sound effects enabled */
   soundEnabled: boolean;
 
-  /** Default session duration (minutes) */
-  defaultSessionDuration: number;
+  /** Target retention rate (0.7-0.99) */
+  targetRetention: number;
 
-  /** New item ratio in sessions */
-  newItemRatio: number;
-
-  /** Show hints automatically */
-  autoHints: boolean;
-
-  /** Keyboard shortcuts enabled */
-  keyboardShortcuts: boolean;
+  /** Custom FRE priority weights (null = use level-based defaults) */
+  priorityWeights: UserFREWeights | null;
 }
 
 // =============================================================================

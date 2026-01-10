@@ -226,7 +226,8 @@ const logosAPI: LogosAPI = {
       invoke<User>('profile:update', data).catch(() => data as unknown as User),
     getSettings: (): Promise<UserSettings> =>
       invoke<UserSettings>('profile:getSettings', {}).catch(() => ({
-        dailyGoalMinutes: 30,
+        dailyGoal: 30,
+        priorityWeights: null,
         sessionLength: 20,
         notificationsEnabled: true,
         soundEnabled: true,

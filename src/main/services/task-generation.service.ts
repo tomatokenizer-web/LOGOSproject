@@ -25,6 +25,12 @@ import {
   getObjectUsageSpace,
 } from './usage-space-tracking.service';
 import type { UsageContext, TaskType, MasteryStage, LanguageObjectType } from '../../core/types';
+import {
+  PhonologicalTrainingOptimizer,
+  createPhonologicalOptimizer,
+  type PhonologicalTrainingItem,
+  type PhonologicalOptimizationResult,
+} from '../../core/engines';
 
 // =============================================================================
 // Types
@@ -2212,5 +2218,205 @@ export async function generateTaskWithAutoMultiObject(
   return {
     task,
     usedMultiObject: false,
+  };
+}
+
+// =============================================================================
+// E4 Phonological Training Engine Integration
+// =============================================================================
+
+// Cached E4 engine instance
+let phonologicalEngine: PhonologicalTrainingOptimizer | null = null;
+
+/**
+ * Get or create the E4 Phonological Training Optimizer.
+ */
+function getPhonologicalEngine(): PhonologicalTrainingOptimizer {
+  if (!phonologicalEngine) {
+    phonologicalEngine = createPhonologicalOptimizer({
+      focusOnL1Interference: true,
+      includeMinimalPairs: true,
+      orderingStrategy: 'easiest_first',
+    });
+  }
+  return phonologicalEngine;
+}
+
+/**
+ * Generate phonological training sequence optimized for L1-L2 transfer.
+ *
+ * E4 엔진의 핵심 기능:
+ * - L1 기반 음소 인벤토리 분석
+ * - 음소 대조 분석 (동일/유사/새로운)
+ * - 최소 쌍 추천
+ * - 음운 훈련 시퀀스 최적화
+ *
+ * @param l1 - Native language code (e.g., 'ko', 'ja', 'zh')
+ * @param l2 - Target language code (e.g., 'en')
+ * @param phonologicalTheta - User's phonological ability (from theta state)
+ * @param masteredPhonemes - Already mastered phonemes
+ * @param targetDomain - Optional domain focus (e.g., 'business', 'academic')
+ */
+export function generatePhonologicalTrainingSequence(
+  l1: string,
+  l2: string,
+  phonologicalTheta: number,
+  masteredPhonemes: string[] = [],
+  targetDomain?: string
+): PhonologicalOptimizationResult {
+  const engine = getPhonologicalEngine();
+
+  return engine.process({
+    l1,
+    l2,
+    targetDomain,
+    learnerState: {
+      phonologicalTheta,
+      masteredPhonemes,
+    },
+  });
+}
+
+/**
+ * Generate enhanced minimal pair tasks using E4's phoneme contrast analysis.
+ * More sophisticated than the basic generateMinimalPairTask.
+ */
+export function generateEnhancedMinimalPairTask(
+  l1: string,
+  trainingItems: PhonologicalTrainingItem[]
+): GeneratedTask | null {
+  if (trainingItems.length === 0) {
+    return null;
+  }
+
+  // Select a training item (prioritize high-priority items)
+  const sortedItems = [...trainingItems].sort((a, b) =>
+    (b.recommendedPracticeFrequency ?? 0) - (a.recommendedPracticeFrequency ?? 0)
+  );
+  const item = sortedItems[0];
+
+  // Use minimal pairs if available
+  if (item.minimalPairs && item.minimalPairs.length > 0) {
+    const pair = item.minimalPairs[Math.floor(Math.random() * item.minimalPairs.length)];
+
+    return {
+      spec: {
+        objectId: `phoneme-${item.targetPhoneme}`,
+        content: item.targetPhoneme,
+        type: 'G2P',
+        format: 'mcq',
+        modality: 'auditory',
+        cueLevel: 1,
+        difficulty: item.estimatedDifficulty ?? 0.5,
+        isFluencyTask: false,
+      },
+      prompt: `Listen and identify: Which word contains the /${item.targetPhoneme}/ sound?`,
+      expectedAnswer: pair.word1.includes(item.targetPhoneme) ? pair.word1 : pair.word2,
+      options: [pair.word1, pair.word2],
+      hints: [
+        `The target sound is /${item.targetPhoneme}/, similar to /${item.l1Approximation}/`,
+        `Try saying both words slowly and listen for the difference`,
+      ],
+      context: `Phoneme contrast: /${item.targetPhoneme}/ vs /${item.contrastivePhoneme}/`,
+      metadata: {
+        generatedAt: new Date(),
+        source: 'template',
+        estimatedTimeMs: 8000,
+      },
+    };
+  }
+
+  // Fallback to basic perception task
+  return {
+    spec: {
+      objectId: `phoneme-${item.targetPhoneme}`,
+      content: item.targetPhoneme,
+      type: 'G2P',
+      format: 'free_response',
+      modality: 'auditory',
+      cueLevel: 2,
+      difficulty: item.estimatedDifficulty ?? 0.5,
+      isFluencyTask: false,
+    },
+    prompt: `Practice the /${item.targetPhoneme}/ sound. In your language (${l1}), the closest sound is /${item.l1Approximation}/.`,
+    expectedAnswer: item.targetPhoneme,
+    hints: [
+      `This sound is ${item.category === 'new' ? 'new to you' : item.category === 'similar' ? 'similar to a sound you know' : 'the same as a sound you know'}`,
+      item.articulatoryDescription ?? 'Focus on the position of your tongue and lips',
+    ],
+    metadata: {
+      generatedAt: new Date(),
+      source: 'template',
+      estimatedTimeMs: 10000,
+    },
+  };
+}
+
+/**
+ * Get recommended phonological training items for a user.
+ * Integrates with user profile to get L1 and current mastery.
+ */
+export async function getPhonologicalTrainingRecommendations(
+  userId: string
+): Promise<{
+  trainingItems: PhonologicalTrainingItem[];
+  priorityContrasts: Array<{
+    targetPhoneme: string;
+    contrastivePhoneme: string;
+    difficulty: number;
+  }>;
+  recommendedSessionDuration: number;
+}> {
+  const db = getPrisma();
+
+  // Get user's language settings
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: {
+      nativeLanguage: true,
+      targetLanguage: true,
+      thetaPhonology: true,
+    },
+  });
+
+  if (!user) {
+    return {
+      trainingItems: [],
+      priorityContrasts: [],
+      recommendedSessionDuration: 0,
+    };
+  }
+
+  // Get mastered phonemes from responses (simplified: check G2P type objects)
+  const masteredPhonemes = await db.response.findMany({
+    where: {
+      session: { userId },
+      object: { type: 'G2P' },
+      correct: true,
+    },
+    distinct: ['objectId'],
+    select: {
+      object: { select: { content: true } },
+    },
+  }).then(responses =>
+    responses.map(r => r.object.content).filter(Boolean)
+  );
+
+  // Generate optimized training sequence
+  const result = generatePhonologicalTrainingSequence(
+    user.nativeLanguage,
+    user.targetLanguage,
+    user.thetaPhonology,
+    masteredPhonemes
+  );
+
+  return {
+    trainingItems: result.orderedSequence,
+    priorityContrasts: result.priorityContrasts.slice(0, 5).map(c => ({
+      targetPhoneme: c.targetPhoneme,
+      contrastivePhoneme: c.contrastivePhoneme,
+      difficulty: c.perceptualDistance,
+    })),
+    recommendedSessionDuration: result.estimatedSessionMinutes,
   };
 }

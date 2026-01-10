@@ -1,8 +1,8 @@
 /**
  * Content Module Index
  *
- * Central export point for content generation and validation.
- * Implements Gap 4.5: Content Sourcing & Generation Framework.
+ * Pedagogical intent types for learning phase and difficulty specification.
+ * Content generation is handled by task-generation.service.ts.
  */
 
 // Pedagogical Intent
@@ -21,47 +21,3 @@ export {
   selectOptimalIntent,
   calculateExpectedSuccess,
 } from './pedagogical-intent';
-
-// Content Specification
-export {
-  type ContentSourceType,
-  type ContentQualityTier,
-  type RegisterLevel,
-  type ContentGenre,
-  type ContentSpec,
-  type ContentContextSpec,
-  type ContentQualitySpec,
-  type GenerationConstraints,
-  type GeneratedContent,
-  type ContentMetadata,
-  createContentSpec,
-  createIntroductionSpec,
-  createProductionSpec,
-  createComprehensionSpec,
-  createFluencySpec,
-  validateContentSpec,
-  contentMeetsSpec,
-  estimateGenerationComplexity,
-} from './content-spec';
-
-// Content Generator
-export {
-  type GeneratorConfig,
-  type ContentCache,
-  type ContentTemplate,
-  type GenerationResult,
-  ContentGenerator,
-  createContentGenerator,
-} from './content-generator';
-
-// Content Validator
-export {
-  type ValidationResult,
-  type ValidationCheck,
-  type ValidationCategory,
-  type ValidatorConfig,
-  type LinguisticBenchmark,
-  ContentQualityValidator,
-  createContentValidator,
-  validateContent,
-} from './content-validator';

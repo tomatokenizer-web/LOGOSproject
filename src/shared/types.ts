@@ -375,17 +375,13 @@ export interface ObjectGetMasteryResponse {
 // User IPC Types
 // -----------------------------------------------------------------------------
 
-export interface UserSettings {
-  dailyGoalMinutes: number;
-  sessionLength: number;
-  notificationsEnabled: boolean;
-  soundEnabled: boolean;
-  theme: 'light' | 'dark' | 'system';
-  targetRetention: number;
-}
+// Note: UserSettings and UserFREWeights are defined in core/types.ts
+// Re-export them here for convenience
+import type { UserSettings, UserFREWeights } from '../core/types';
+export type { UserSettings, UserFREWeights };
 
 export interface UserUpdateSettingsRequest {
-  settings: Partial<UserSettings>;
+  settings: Partial<import('../core/types').UserSettings>;
 }
 
 export interface UserGetThetaResponse {

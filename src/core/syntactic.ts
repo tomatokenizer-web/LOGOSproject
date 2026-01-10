@@ -21,6 +21,10 @@
 
 /**
  * Complete syntactic complexity metrics.
+ *
+ * Includes Lu (2010, 2011) metrics for syntactic complexity:
+ * - Lu, X. (2010). Automatic analysis of syntactic complexity in second language writing.
+ * - Lu, X. (2011). A corpus-based evaluation of syntactic complexity measures.
  */
 export interface SyntacticComplexity {
   /** Number of words in the sentence */
@@ -49,9 +53,80 @@ export interface SyntacticComplexity {
 
   /** Estimated CEFR level */
   estimatedCEFR: CEFRLevel;
+
+  // ========== Lu (2010, 2011) Metrics ==========
+
+  /**
+   * MLC: Mean Length of Clause
+   * Average number of words per clause.
+   * Lu (2010): One of the most reliable complexity measures.
+   */
+  meanLengthOfClause: number;
+
+  /**
+   * CN/C: Complex Nominals per Clause
+   * Nouns with pre/post modification per clause.
+   * Complex nominals = NP with adj/PP/relative clause modifiers
+   * Lu (2011): Discriminates proficiency levels effectively.
+   */
+  complexNominalsPerClause: number;
+
+  /**
+   * DC/C: Dependent Clauses per Clause
+   * Ratio of dependent clauses to total clauses.
+   * Lu (2010): Captures syntactic sophistication.
+   */
+  dependentClausesPerClause: number;
+
+  /**
+   * T-unit metrics (optional, computed when text has multiple sentences)
+   */
+  tUnitMetrics?: TUnitMetrics;
 }
 
 export type CEFRLevel = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
+
+/**
+ * T-unit metrics from Lu (2010, 2011).
+ *
+ * T-unit = minimal terminable unit = one main clause + attached subordinate clauses
+ */
+export interface TUnitMetrics {
+  /** Total number of T-units */
+  tUnitCount: number;
+
+  /** MLS: Mean Length of Sentence (words per sentence) */
+  meanLengthOfSentence: number;
+
+  /** MLT: Mean Length of T-unit (words per T-unit) */
+  meanLengthOfTUnit: number;
+
+  /** C/T: Clauses per T-unit */
+  clausesPerTUnit: number;
+
+  /** CT/T: Complex T-units per T-unit (T-units with dependent clause) */
+  complexTUnitsRatio: number;
+
+  /** CP/T: Coordinate Phrases per T-unit */
+  coordinatePhrasesPerTUnit: number;
+
+  /** VP/T: Verb Phrases per T-unit */
+  verbPhrasesPerTUnit: number;
+}
+
+/**
+ * Complex nominal detection result.
+ */
+export interface ComplexNominal {
+  /** The nominal phrase */
+  phrase: string;
+
+  /** Type of modification */
+  modificationType: 'adjective' | 'prepositional' | 'relative' | 'participle' | 'appositive';
+
+  /** Position in sentence */
+  position: number;
+}
 
 /**
  * Syntactic vector for LanguageObjectVector.
@@ -132,6 +207,11 @@ export interface GenreStructure {
 
 /**
  * CEFR complexity targets from ALGORITHMIC-FOUNDATIONS.md.
+ * Extended with Lu (2010, 2011) metrics based on corpus studies.
+ *
+ * Lu metrics reference values from:
+ * - Lu, X. (2011). A corpus-based evaluation of syntactic complexity measures
+ *   as indices of college-level ESL writers' language development.
  */
 export const CEFR_COMPLEXITY_TARGETS: Record<CEFRLevel, SyntacticComplexity> = {
   'A1': {
@@ -143,7 +223,11 @@ export const CEFR_COMPLEXITY_TARGETS: Record<CEFRLevel, SyntacticComplexity> = {
     nominalRatio: 0.4,
     averageDependencyDistance: 2,
     complexityScore: 0.1,
-    estimatedCEFR: 'A1'
+    estimatedCEFR: 'A1',
+    // Lu metrics - A1 level
+    meanLengthOfClause: 6,        // Simple, short clauses
+    complexNominalsPerClause: 0.2, // Minimal modification
+    dependentClausesPerClause: 0   // No subordination
   },
   'A2': {
     sentenceLength: 12,
@@ -154,7 +238,11 @@ export const CEFR_COMPLEXITY_TARGETS: Record<CEFRLevel, SyntacticComplexity> = {
     nominalRatio: 0.45,
     averageDependencyDistance: 3,
     complexityScore: 0.25,
-    estimatedCEFR: 'A2'
+    estimatedCEFR: 'A2',
+    // Lu metrics - A2 level
+    meanLengthOfClause: 7,
+    complexNominalsPerClause: 0.4,
+    dependentClausesPerClause: 0.15
   },
   'B1': {
     sentenceLength: 15,
@@ -165,7 +253,11 @@ export const CEFR_COMPLEXITY_TARGETS: Record<CEFRLevel, SyntacticComplexity> = {
     nominalRatio: 0.5,
     averageDependencyDistance: 4,
     complexityScore: 0.4,
-    estimatedCEFR: 'B1'
+    estimatedCEFR: 'B1',
+    // Lu metrics - B1 level
+    meanLengthOfClause: 8,
+    complexNominalsPerClause: 0.6,
+    dependentClausesPerClause: 0.25
   },
   'B2': {
     sentenceLength: 20,
@@ -176,7 +268,11 @@ export const CEFR_COMPLEXITY_TARGETS: Record<CEFRLevel, SyntacticComplexity> = {
     nominalRatio: 0.55,
     averageDependencyDistance: 5,
     complexityScore: 0.6,
-    estimatedCEFR: 'B2'
+    estimatedCEFR: 'B2',
+    // Lu metrics - B2 level
+    meanLengthOfClause: 9.5,
+    complexNominalsPerClause: 0.85,
+    dependentClausesPerClause: 0.35
   },
   'C1': {
     sentenceLength: 25,
@@ -187,7 +283,11 @@ export const CEFR_COMPLEXITY_TARGETS: Record<CEFRLevel, SyntacticComplexity> = {
     nominalRatio: 0.6,
     averageDependencyDistance: 6,
     complexityScore: 0.8,
-    estimatedCEFR: 'C1'
+    estimatedCEFR: 'C1',
+    // Lu metrics - C1 level
+    meanLengthOfClause: 11,
+    complexNominalsPerClause: 1.1,
+    dependentClausesPerClause: 0.45
   },
   'C2': {
     sentenceLength: 30,
@@ -198,7 +298,11 @@ export const CEFR_COMPLEXITY_TARGETS: Record<CEFRLevel, SyntacticComplexity> = {
     nominalRatio: 0.65,
     averageDependencyDistance: 7,
     complexityScore: 1.0,
-    estimatedCEFR: 'C2'
+    estimatedCEFR: 'C2',
+    // Lu metrics - C2 level (native-like)
+    meanLengthOfClause: 12.5,
+    complexNominalsPerClause: 1.4,
+    dependentClausesPerClause: 0.55
   }
 };
 
@@ -343,7 +447,7 @@ function analyzeSingleSentence(sentence: string): SyntacticComplexity {
 
   // Clause analysis
   const clauseAnalysis = analyzeClauseStructure(sentence);
-  const totalClauses = clauseAnalysis.mainClauses + clauseAnalysis.subordinateClauses;
+  const totalClauses = Math.max(clauseAnalysis.mainClauses + clauseAnalysis.subordinateClauses, 1);
 
   // POS-based ratios (heuristic)
   const nounMatches = sentence.match(NOUN_PATTERNS) || [];
@@ -369,6 +473,18 @@ function analyzeSingleSentence(sentence: string): SyntacticComplexity {
   // Average dependency distance estimation
   const averageDependencyDistance = length / (totalClauses * 2 + 1);
 
+  // ========== Lu (2010, 2011) Metrics ==========
+
+  // MLC: Mean Length of Clause
+  const meanLengthOfClause = length / totalClauses;
+
+  // CN/C: Complex Nominals per Clause
+  const complexNominals = detectComplexNominals(sentence);
+  const complexNominalsPerClause = complexNominals.length / totalClauses;
+
+  // DC/C: Dependent Clauses per Clause
+  const dependentClausesPerClause = clauseAnalysis.subordinateClauses / totalClauses;
+
   return {
     sentenceLength: length,
     dependencyDepth,
@@ -378,7 +494,11 @@ function analyzeSingleSentence(sentence: string): SyntacticComplexity {
     nominalRatio,
     averageDependencyDistance,
     complexityScore: 0, // Calculated later
-    estimatedCEFR: 'A1' // Calculated later
+    estimatedCEFR: 'A1', // Calculated later
+    // Lu metrics
+    meanLengthOfClause,
+    complexNominalsPerClause,
+    dependentClausesPerClause
   };
 }
 
@@ -442,6 +562,220 @@ function countPassiveConstructions(sentence: string): number {
   }
 
   return count;
+}
+
+// ============================================================================
+// Lu (2010, 2011) Complex Nominal Detection
+// ============================================================================
+
+/**
+ * Complex nominal patterns for CN/C calculation.
+ *
+ * Complex nominals include (Lu, 2010):
+ * 1. Nouns modified by adjectives
+ * 2. Nouns modified by prepositional phrases
+ * 3. Nouns modified by relative clauses
+ * 4. Nouns modified by participles
+ * 5. Appositives
+ * 6. Gerunds/infinitives as subjects
+ */
+
+/** Adjective + Noun pattern */
+const ADJ_NOUN_PATTERN = /\b(very|quite|rather|extremely|highly|really)?\s*(important|significant|complex|difficult|specific|particular|main|primary|secondary|new|old|big|small|large|great|good|bad|high|low|long|short|different|same|similar|other|such|certain|various|several|major|minor|recent|current|previous|following|potential|possible|necessary|essential|critical|key|basic|general|special|specific|medical|legal|clinical|professional|academic|scientific)\s+\w+(tion|ment|ness|ity|ism|er|or|ist|ance|ence|ship|hood|dom|age|ure|ing|ed|s)?\b/gi;
+
+/** Noun + Prepositional Phrase pattern */
+const NOUN_PP_PATTERN = /\b\w+(tion|ment|ness|ity|ism|er|or|ist|ance|ence|ship|hood|dom|age|ure)\s+(of|in|for|with|by|to|from|on|at|about|through|during|after|before|between|among|under|over|against|within|without|across|behind|beyond|toward|towards|upon)\s+(the|a|an|this|that|these|those|my|your|his|her|its|our|their|\w+)\b/gi;
+
+/** Noun + Relative Clause pattern */
+const NOUN_RELATIVE_PATTERN = /\b\w+(tion|ment|ness|ity|ism|er|or|ist|ance|ence|ship|hood|dom|age|ure|s)?\s+(who|which|that|whose|whom|where|when)\s+\w+/gi;
+
+/** Noun + Participle pattern (past or present) */
+const NOUN_PARTICIPLE_PATTERN = /\b\w+(tion|ment|ness|ity|ism|er|or|ist|ance|ence|ship|hood|dom|age|ure|s)?\s+(being|having|made|given|taken|done|seen|known|found|used|called|based|located|related|associated|connected|involved|required|expected|needed|caused|produced|created|developed|designed|intended|meant|supposed)\b/gi;
+
+/** Participle + Noun pattern (premodification) */
+const PARTICIPLE_NOUN_PATTERN = /\b(increasing|decreasing|growing|developing|changing|improving|worsening|ongoing|underlying|resulting|remaining|existing|following|preceding|leading|emerging|continuing|persisting|recurring|corresponding|accompanying|surrounding|supporting|related|associated|combined|integrated|expected|required|needed|recommended|suggested|proposed|reported|documented|observed|noted|mentioned|described|indicated|demonstrated|established|confirmed|identified|recognized|acknowledged)\s+\w+(tion|ment|ness|ity|ism|er|or|ist|ance|ence|ship|hood|dom|age|ure|s)?\b/gi;
+
+/** Gerund as subject pattern */
+const GERUND_SUBJECT_PATTERN = /^(Taking|Making|Having|Being|Doing|Going|Getting|Giving|Finding|Using|Keeping|Providing|Managing|Performing|Conducting|Assessing|Evaluating|Determining|Establishing|Implementing)\s+\w+/gi;
+
+/**
+ * Detect complex nominals in a sentence.
+ *
+ * Based on Lu (2010, 2011) definition:
+ * Complex nominals = NPs with pre/post modification that add
+ * semantic or structural complexity.
+ *
+ * @param sentence - Sentence to analyze
+ * @returns Array of detected complex nominals
+ */
+export function detectComplexNominals(sentence: string): ComplexNominal[] {
+  const complexNominals: ComplexNominal[] = [];
+
+  // 1. Adjective + Noun
+  let match;
+  const adjNounRegex = new RegExp(ADJ_NOUN_PATTERN.source, 'gi');
+  while ((match = adjNounRegex.exec(sentence)) !== null) {
+    complexNominals.push({
+      phrase: match[0],
+      modificationType: 'adjective',
+      position: match.index
+    });
+  }
+
+  // 2. Noun + Prepositional Phrase
+  const nounPPRegex = new RegExp(NOUN_PP_PATTERN.source, 'gi');
+  while ((match = nounPPRegex.exec(sentence)) !== null) {
+    complexNominals.push({
+      phrase: match[0],
+      modificationType: 'prepositional',
+      position: match.index
+    });
+  }
+
+  // 3. Noun + Relative Clause
+  const nounRelRegex = new RegExp(NOUN_RELATIVE_PATTERN.source, 'gi');
+  while ((match = nounRelRegex.exec(sentence)) !== null) {
+    complexNominals.push({
+      phrase: match[0],
+      modificationType: 'relative',
+      position: match.index
+    });
+  }
+
+  // 4. Noun + Participle
+  const nounPartRegex = new RegExp(NOUN_PARTICIPLE_PATTERN.source, 'gi');
+  while ((match = nounPartRegex.exec(sentence)) !== null) {
+    complexNominals.push({
+      phrase: match[0],
+      modificationType: 'participle',
+      position: match.index
+    });
+  }
+
+  // 5. Participle + Noun (premodification)
+  const partNounRegex = new RegExp(PARTICIPLE_NOUN_PATTERN.source, 'gi');
+  while ((match = partNounRegex.exec(sentence)) !== null) {
+    complexNominals.push({
+      phrase: match[0],
+      modificationType: 'participle',
+      position: match.index
+    });
+  }
+
+  // 6. Gerund as subject
+  const gerundRegex = new RegExp(GERUND_SUBJECT_PATTERN.source, 'gi');
+  while ((match = gerundRegex.exec(sentence)) !== null) {
+    complexNominals.push({
+      phrase: match[0],
+      modificationType: 'participle',
+      position: match.index
+    });
+  }
+
+  // Remove duplicates based on position
+  const uniqueNominals = complexNominals.filter((cn, index, self) =>
+    index === self.findIndex(other =>
+      Math.abs(other.position - cn.position) < 5 && other.modificationType === cn.modificationType
+    )
+  );
+
+  return uniqueNominals;
+}
+
+/**
+ * Calculate T-unit metrics for multi-sentence text.
+ *
+ * T-unit = minimal terminable unit (Hunt, 1965)
+ * = one main clause + all attached subordinate clauses
+ *
+ * @param text - Text with multiple sentences
+ * @returns T-unit metrics
+ */
+export function calculateTUnitMetrics(text: string): TUnitMetrics {
+  const sentences = splitSentences(text);
+  if (sentences.length === 0) {
+    return {
+      tUnitCount: 0,
+      meanLengthOfSentence: 0,
+      meanLengthOfTUnit: 0,
+      clausesPerTUnit: 0,
+      complexTUnitsRatio: 0,
+      coordinatePhrasesPerTUnit: 0,
+      verbPhrasesPerTUnit: 0
+    };
+  }
+
+  let totalWords = 0;
+  let totalTUnits = 0;
+  let totalClauses = 0;
+  let complexTUnits = 0;
+  let totalCoordPhrases = 0;
+  let totalVerbPhrases = 0;
+
+  for (const sentence of sentences) {
+    const words = tokenize(sentence);
+    totalWords += words.length;
+
+    const clauseAnalysis = analyzeClauseStructure(sentence);
+    const clauses = clauseAnalysis.mainClauses + clauseAnalysis.subordinateClauses;
+    totalClauses += clauses;
+
+    // T-units = main clauses (each main clause starts a T-unit)
+    totalTUnits += clauseAnalysis.mainClauses;
+
+    // Complex T-units = T-units with at least one subordinate clause
+    if (clauseAnalysis.subordinateClauses > 0) {
+      complexTUnits += Math.min(clauseAnalysis.mainClauses, clauseAnalysis.subordinateClauses);
+    }
+
+    // Coordinate phrases (simplified: count coordinating conjunctions)
+    totalCoordPhrases += clauseAnalysis.coordinationCount;
+
+    // Verb phrases (simplified: count verbs)
+    const verbMatches = sentence.match(VERB_PATTERNS) || [];
+    totalVerbPhrases += verbMatches.length;
+  }
+
+  const tUnitCount = Math.max(totalTUnits, 1);
+
+  return {
+    tUnitCount,
+    meanLengthOfSentence: totalWords / sentences.length,
+    meanLengthOfTUnit: totalWords / tUnitCount,
+    clausesPerTUnit: totalClauses / tUnitCount,
+    complexTUnitsRatio: complexTUnits / tUnitCount,
+    coordinatePhrasesPerTUnit: totalCoordPhrases / tUnitCount,
+    verbPhrasesPerTUnit: totalVerbPhrases / tUnitCount
+  };
+}
+
+/**
+ * Calculate full Lu (2010, 2011) metrics for a text.
+ *
+ * @param text - Text to analyze
+ * @returns Object with all Lu metrics
+ */
+export function calculateLuMetrics(text: string): {
+  MLC: number;  // Mean Length of Clause
+  CNC: number;  // Complex Nominals per Clause
+  DCC: number;  // Dependent Clauses per Clause
+  MLS: number;  // Mean Length of Sentence
+  MLT: number;  // Mean Length of T-unit
+  CT: number;   // Clauses per T-unit
+  CTT: number;  // Complex T-units per T-unit
+} {
+  const complexity = analyzeSyntacticComplexity(text);
+  const tUnitMetrics = calculateTUnitMetrics(text);
+
+  return {
+    MLC: complexity.meanLengthOfClause,
+    CNC: complexity.complexNominalsPerClause,
+    DCC: complexity.dependentClausesPerClause,
+    MLS: tUnitMetrics.meanLengthOfSentence,
+    MLT: tUnitMetrics.meanLengthOfTUnit,
+    CT: tUnitMetrics.clausesPerTUnit,
+    CTT: tUnitMetrics.complexTUnitsRatio
+  };
 }
 
 // ============================================================================
@@ -781,7 +1115,11 @@ function createEmptyComplexity(): SyntacticComplexity {
     nominalRatio: 0,
     averageDependencyDistance: 0,
     complexityScore: 0,
-    estimatedCEFR: 'A1'
+    estimatedCEFR: 'A1',
+    // Lu metrics
+    meanLengthOfClause: 0,
+    complexNominalsPerClause: 0,
+    dependentClausesPerClause: 0
   };
 }
 
@@ -800,7 +1138,11 @@ function averageMetrics(metrics: SyntacticComplexity[]): SyntacticComplexity {
     nominalRatio: acc.nominalRatio + m.nominalRatio,
     averageDependencyDistance: acc.averageDependencyDistance + m.averageDependencyDistance,
     complexityScore: 0,
-    estimatedCEFR: 'A1' as CEFRLevel
+    estimatedCEFR: 'A1' as CEFRLevel,
+    // Lu metrics
+    meanLengthOfClause: acc.meanLengthOfClause + m.meanLengthOfClause,
+    complexNominalsPerClause: acc.complexNominalsPerClause + m.complexNominalsPerClause,
+    dependentClausesPerClause: acc.dependentClausesPerClause + m.dependentClausesPerClause
   }), createEmptyComplexity());
 
   const n = metrics.length;
@@ -813,7 +1155,11 @@ function averageMetrics(metrics: SyntacticComplexity[]): SyntacticComplexity {
     nominalRatio: sum.nominalRatio / n,
     averageDependencyDistance: sum.averageDependencyDistance / n,
     complexityScore: 0,
-    estimatedCEFR: 'A1'
+    estimatedCEFR: 'A1',
+    // Lu metrics
+    meanLengthOfClause: sum.meanLengthOfClause / n,
+    complexNominalsPerClause: sum.complexNominalsPerClause / n,
+    dependentClausesPerClause: sum.dependentClausesPerClause / n
   };
 }
 

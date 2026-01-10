@@ -7,6 +7,13 @@
 
 import { getPrisma } from '../db/prisma';
 import { PMICalculator, pmiToDifficulty, frequencyToDifficulty, type TaskType, type PMIResult } from '../../core/pmi';
+import {
+  UniversalCooccurrenceEngine,
+  createCooccurrenceEngine,
+  type CooccurrenceResult,
+  type UsageSpaceExpansionRecommendation,
+  type CooccurrenceObjectType,
+} from '../../core/engines';
 
 // =============================================================================
 // Types
@@ -36,6 +43,67 @@ const calculatorCache = new Map<string, {
 }>();
 
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+// =============================================================================
+// E1 Cooccurrence Engine Cache (for cross-type analysis)
+// =============================================================================
+
+const cooccurrenceEngineCache = new Map<string, {
+  engine: UniversalCooccurrenceEngine;
+  lastUpdated: Date;
+}>();
+
+/**
+ * Get or create a Universal Cooccurrence Engine for a goal.
+ * E1 엔진은 28가지 객체 쌍 유형 간의 공출현 분석을 지원합니다.
+ */
+async function getCooccurrenceEngineForGoal(goalId: string): Promise<UniversalCooccurrenceEngine | null> {
+  const cached = cooccurrenceEngineCache.get(goalId);
+  const now = new Date();
+
+  // Return cached if still valid
+  if (cached && (now.getTime() - cached.lastUpdated.getTime()) < CACHE_TTL_MS) {
+    return cached.engine;
+  }
+
+  const db = getPrisma();
+
+  // Get all language objects for this goal grouped by type
+  const objects = await db.languageObject.findMany({
+    where: { goalId },
+    select: { id: true, content: true, type: true },
+  });
+
+  if (objects.length === 0) {
+    return null;
+  }
+
+  // Create E1 engine
+  const engine = createCooccurrenceEngine({ windowSize: 5, minCooccurrence: 2 });
+
+  // Index corpus by object type
+  const objectsByType = new Map<string, string[]>();
+  for (const obj of objects) {
+    const tokens = obj.content.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+    if (!objectsByType.has(obj.type)) {
+      objectsByType.set(obj.type, []);
+    }
+    objectsByType.get(obj.type)!.push(...tokens);
+  }
+
+  // Index each type
+  for (const [type, tokens] of objectsByType) {
+    engine.indexCorpus(type as CooccurrenceObjectType, tokens);
+  }
+
+  // Cache it
+  cooccurrenceEngineCache.set(goalId, {
+    engine,
+    lastUpdated: now,
+  });
+
+  return engine;
+}
 
 /**
  * Get or create a PMI calculator for a goal.
@@ -365,4 +433,199 @@ export function clearCalculatorCache(goalId: string): void {
  */
 export function clearAllCalculatorCaches(): void {
   calculatorCache.clear();
+  cooccurrenceEngineCache.clear();
+}
+
+// =============================================================================
+// E1 Engine Extended API (Cross-Type Cooccurrence Analysis)
+// =============================================================================
+
+/**
+ * Analyze cooccurrence between two objects of any type.
+ * Uses E1 UniversalCooccurrenceEngine for 28-pair type support.
+ *
+ * @example
+ * // Analyze LEX-SYNT relationship
+ * const result = await analyzeCooccurrence(goalId, {
+ *   id: 'word1', type: 'LEX', content: 'however'
+ * }, {
+ *   id: 'syntax1', type: 'SYNT', content: 'contrast_clause'
+ * });
+ */
+export async function analyzeCooccurrence(
+  goalId: string,
+  object1: { id: string; type: string; content: string },
+  object2: { id: string; type: string; content: string }
+): Promise<CooccurrenceResult | null> {
+  const engine = await getCooccurrenceEngineForGoal(goalId);
+
+  if (!engine) {
+    return null;
+  }
+
+  return engine.process({
+    object1: {
+      id: object1.id,
+      type: object1.type as CooccurrenceObjectType,
+      content: object1.content,
+    },
+    object2: {
+      id: object2.id,
+      type: object2.type as CooccurrenceObjectType,
+      content: object2.content,
+    },
+  });
+}
+
+/**
+ * Get UsageSpace expansion recommendations for an object.
+ * Finds strongly cooccurring objects that would benefit from joint learning.
+ *
+ * E1 엔진의 핵심 기능: 대상 객체와 함께 학습하면 전이 효과가 기대되는
+ * 객체들을 추천합니다.
+ *
+ * @param goalId - Target goal ID
+ * @param objectId - Target object ID
+ * @param objectType - Target object type (LEX, MORPH, SYNT, etc.)
+ * @param maxRecommendations - Maximum number of recommendations
+ */
+export async function getExpansionRecommendations(
+  goalId: string,
+  objectId: string,
+  objectType: string,
+  maxRecommendations: number = 10
+): Promise<UsageSpaceExpansionRecommendation | null> {
+  const db = getPrisma();
+  const engine = await getCooccurrenceEngineForGoal(goalId);
+
+  if (!engine) {
+    return null;
+  }
+
+  // Get all candidate objects from the goal
+  const candidates = await db.languageObject.findMany({
+    where: { goalId },
+    select: { id: true, type: true, content: true },
+  });
+
+  // Filter out the target object
+  const candidateObjects = candidates
+    .filter(c => c.id !== objectId)
+    .map(c => ({
+      id: c.id,
+      type: c.type as CooccurrenceObjectType,
+      content: c.content,
+    }));
+
+  return engine.getExpansionRecommendations(
+    objectId,
+    objectType as CooccurrenceObjectType,
+    candidateObjects,
+    maxRecommendations
+  );
+}
+
+/**
+ * Analyze cross-type cooccurrence patterns for a goal.
+ * Returns statistics about which object type pairs have strong relationships.
+ *
+ * Useful for understanding the linguistic structure of the goal's content.
+ */
+export async function analyzeCrossTypePatterns(
+  goalId: string
+): Promise<{
+  pairType: string;
+  averageNPMI: number;
+  strongRelationships: number;
+  totalAnalyzed: number;
+}[]> {
+  const db = getPrisma();
+  const engine = await getCooccurrenceEngineForGoal(goalId);
+
+  if (!engine) {
+    return [];
+  }
+
+  // Get all objects grouped by type
+  const objects = await db.languageObject.findMany({
+    where: { goalId },
+    select: { id: true, type: true, content: true },
+  });
+
+  const objectsByType = new Map<string, typeof objects>();
+  for (const obj of objects) {
+    if (!objectsByType.has(obj.type)) {
+      objectsByType.set(obj.type, []);
+    }
+    objectsByType.get(obj.type)!.push(obj);
+  }
+
+  const types = Array.from(objectsByType.keys());
+  const results: {
+    pairType: string;
+    averageNPMI: number;
+    strongRelationships: number;
+    totalAnalyzed: number;
+  }[] = [];
+
+  // Analyze each type pair (including same-type pairs)
+  for (let i = 0; i < types.length; i++) {
+    for (let j = i; j < types.length; j++) {
+      const type1 = types[i];
+      const type2 = types[j];
+      const objects1 = objectsByType.get(type1)!;
+      const objects2 = objectsByType.get(type2)!;
+
+      let totalNPMI = 0;
+      let strongCount = 0;
+      let analyzed = 0;
+
+      // Sample pairs for analysis (avoid O(n²) for large datasets)
+      const maxPairs = 100;
+      const sample1 = objects1.slice(0, Math.min(10, objects1.length));
+      const sample2 = objects2.slice(0, Math.min(10, objects2.length));
+
+      for (const obj1 of sample1) {
+        for (const obj2 of sample2) {
+          if (obj1.id === obj2.id) continue;
+
+          const result = engine.process({
+            object1: {
+              id: obj1.id,
+              type: obj1.type as CooccurrenceObjectType,
+              content: obj1.content,
+            },
+            object2: {
+              id: obj2.id,
+              type: obj2.type as CooccurrenceObjectType,
+              content: obj2.content,
+            },
+          });
+
+          totalNPMI += result.npmi;
+          if (result.relationStrength > 0.5) {
+            strongCount++;
+          }
+          analyzed++;
+
+          if (analyzed >= maxPairs) break;
+        }
+        if (analyzed >= maxPairs) break;
+      }
+
+      if (analyzed > 0) {
+        results.push({
+          pairType: `${type1}-${type2}`,
+          averageNPMI: totalNPMI / analyzed,
+          strongRelationships: strongCount,
+          totalAnalyzed: analyzed,
+        });
+      }
+    }
+  }
+
+  // Sort by average NPMI
+  results.sort((a, b) => b.averageNPMI - a.averageNPMI);
+
+  return results;
 }
