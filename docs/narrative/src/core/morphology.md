@@ -49,11 +49,17 @@ This module is **self-contained** with no external dependencies. It includes:
 
 | File | Usage |
 |------|-------|
+| **`src/core/component-vectors.ts`** | `MORPHVector` 타입은 이 모듈의 분석 결과를 구조화: `productivity`, `transparency`, `familySize`, `paradigmComplexity` 등. [component-vectors.md](component-vectors.md) 참조 |
 | `src/core/bottleneck.ts` | Uses component type 'MORPH' for cascade analysis; pattern extraction references morphological error patterns |
 | `src/core/types.ts` | Defines `MorphologicalAnalysis` and `Affix` interfaces that this module implements |
 | `src/shared/types.ts` | Re-exports morphology-related types for IPC communication |
 | `src/main/services/claude.ts` | (Expected) Uses morphological analysis for vocabulary extraction requests |
 | Task generation system | (Expected) Calibrates task difficulty using `difficultyScore` |
+
+**MORPHVector 연결**: 이 모듈의 출력이 `MORPHVector`의 차원 값을 채웁니다:
+- `toMorphologicalVector().transparency` → `MORPHVector.transparency`
+- `toMorphologicalVector().productivity` → `MORPHVector.productivity`
+- Family size는 corpus 분석에서 별도 계산 필요
 
 ### Data Flow
 

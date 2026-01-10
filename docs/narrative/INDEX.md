@@ -1,7 +1,7 @@
 # LOGOS Shadow Documentation Index
 
-> **Last Updated**: 2026-01-06
-> **Coverage**: 136 documentation files for 136 source files (100%)
+> **Last Updated**: 2026-01-10
+> **Coverage**: 137 documentation files for 137 source files (100%)
 > **Status**: ✅ Complete - Full Documentation Coverage Achieved
 
 ---
@@ -97,6 +97,8 @@ graph TB
         transfer[transfer.ts]
         syntactic[syntactic.ts]
         pragmatics[pragmatics.ts]
+        lexical[lexical.ts]
+        component_vectors[component-vectors.ts]
     end
 
     subgraph "IPC Layer"
@@ -176,7 +178,29 @@ graph TB
 | `dynamic-corpus.ts` | [dynamic-corpus.md](src/core/dynamic-corpus.md) | Exists | - |
 | `multi-curriculum.ts` | [multi-curriculum.md](src/core/multi-curriculum.md) | Exists | - |
 | `onboarding-ai.ts` | [onboarding-ai.md](src/core/onboarding-ai.md) | Exists | - |
+| `lexical.ts` | [lexical.md](src/core/lexical.md) | ✅ Created | HIGH |
+| `component-vectors.ts` | [component-vectors.md](src/core/component-vectors.md) | ✅ Created | **CRITICAL** |
 | `index.ts` | [index.md](src/core/index.md) | Exists | - |
+
+#### Component-Specific z(w) Vector System (NEW)
+
+> **2026-01-10 추가**: 컴포넌트별 학습 벡터 시스템이 추가되었습니다.
+
+`component-vectors.ts`는 5개 언어 컴포넌트에 대한 고유 벡터 차원과 Cost Modifier를 정의합니다:
+
+| Component | Vector Type | Key Dimensions | Source Module |
+|-----------|-------------|----------------|---------------|
+| PHON | `PHONVector` | g2pRegularity, neighborhoodDensity, l1TransferDifficulty | [g2p.ts](src/core/g2p.md) |
+| MORPH | `MORPHVector` | productivity, transparency, familySize | [morphology.ts](src/core/morphology.md) |
+| LEX | `LEXVector` | concreteness, polysemy, AoA, cognateStatus | [lexical.ts](src/core/lexical.md) |
+| SYNT | `SYNTVector` | complexityScore, embeddingDepth, processabilityStage | [syntactic.ts](src/core/syntactic.md) |
+| PRAG | `PRAGVector` | culturalLoad, politenessComplexity, faceThreatPotential | [pragmatics.ts](src/core/pragmatics.md) |
+
+**핵심 기능**:
+- `computeComponentCostModifier()`: 컴포넌트별 난이도 수정자 (0.5-2.0)
+- `computeComponentPriority()`: FRE / ComponentCost 기반 우선순위
+- `generateTaskDesignParams()`: 컴포넌트 특성에 맞는 태스크 추천
+- `predictLearningTrajectory()`: 학습 궤적 예측
 
 #### Core Submodules
 

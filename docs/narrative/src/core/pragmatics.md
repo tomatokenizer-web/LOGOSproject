@@ -29,6 +29,14 @@ This module is **pure** - it has no external dependencies. It implements all ana
 
 ### Dependents (What Needs This)
 
+- **`src/core/component-vectors.ts`**: `PRAGVector` 타입은 이 모듈의 분석 결과를 구조화합니다:
+  - `analyzeRegister()` → `registerFlexibility`, `formalityLevel`
+  - `analyzePoliteness()` → `politenessComplexity`, `politenessStrategy`
+  - `assessPragmaticAppropriateness()` → `faceThreatPotential`, `culturalLoad`
+  - Brown & Levinson (1987) 이론 기반의 `powerSensitivity`, `distanceSensitivity`
+
+  > 참조: [component-vectors.md](component-vectors.md) - PRAGVector 구조 및 Cost Modifier 계산
+
 - **`src/core/task-matching.ts`**: Uses the **pragmatic score** (PRAG) from this module as part of the z(w) vector to determine which task types are most appropriate for words with high register sensitivity. Words with high pragmatic scores get matched to "Register shift" and "Context-appropriate use" exercises.
 
 - **`src/core/state/component-object-state.ts`**: Tracks pragmatics as one of five **LanguageComponent** types (`'pragmatic'`), managing exposure history and cognitive induction metrics for pragmatic competence.

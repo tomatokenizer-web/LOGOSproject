@@ -39,6 +39,13 @@ This module is intentionally self-contained with no external dependencies. It im
 
 ### Dependents (What Needs This)
 
+- **`src/core/component-vectors.ts`**: `PHONVector` 타입은 이 모듈의 분석 결과를 구조화합니다:
+  - `analyzeG2PDifficulty()` → `graphemePhonemeRegularity`, `g2pEntropy`
+  - `analyzeG2PWithL1()` → `l1TransferDifficulty`, `predictedMispronunciations`
+  - `countSyllables()` → `hierarchicalLevel` 결정에 활용
+
+  > 참조: [component-vectors.md](component-vectors.md) - PHONVector 구조 및 Cost Modifier 계산
+
 - `src/core/languageObjectVector.ts`: Calls `toPhonologicalVector()` and `toOrthographicVector()` to populate the phonological and orthographic dimensions of vocabulary items
 - `src/scheduling/taskCalibration.ts`: Uses `analyzeG2PDifficulty()` to estimate pronunciation task difficulty for the Scheduler
 - `src/learning/pronunciationTraining.ts`: Uses `predictMispronunciations()` to generate L1-specific pronunciation feedback

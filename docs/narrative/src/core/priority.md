@@ -67,8 +67,21 @@ L1-L2 transfer (cognates, similar grammar) reduces learning cost rather than inc
 - **`./pragmatics`**: `calculatePragmaticDifficulty()`, `PragmaticProfile` - for pragmatic complexity scoring
 - **`./transfer`**: `calculateTransferGain()`, `getTransferCoefficients()` - for L1-L2 transfer benefit calculation
 
+### Related: Component-Specific Priority System
+
+> **중요**: 이 모듈은 기존 LEX 중심의 FRE 우선순위를 제공합니다. 모든 5개 컴포넌트(PHON, MORPH, LEX, SYNT, PRAG)에 대한 **컴포넌트별 우선순위 계산**은 [component-vectors.ts](component-vectors.md)의 `computeComponentPriority()` 함수를 참조하세요.
+
+**기존 시스템 vs 컴포넌트별 시스템**:
+
+| 측면 | 이 모듈 (`priority.ts`) | `component-vectors.ts` |
+|------|------------------------|------------------------|
+| 대상 | 주로 LEX (어휘) 객체 | 모든 5개 컴포넌트 |
+| Cost 계산 | 일반적인 난이도 기반 | 컴포넌트별 Cost Modifier (0.5-2.0) |
+| 사용 사례 | 기존 어휘 학습 큐 | 컴포넌트별 적응 학습 |
+
 ### Dependents (What Needs This)
 
+- **`src/core/component-vectors.ts`**: `computeComponentPriority()`에서 FRE 계산 로직을 활용하며, 컴포넌트별 Cost Modifier를 추가합니다. [component-vectors.md](component-vectors.md) 참조
 - **`src/main/services/state-priority.service.ts`**: Builds learning queues using `buildLearningQueue()` and `buildEnhancedLearningQueue()`
 - **`src/main/services/session.service.ts`**: Uses `getSessionItems()` to construct practice sessions
 - **`src/core/index.ts`**: Re-exports all priority functions for convenient importing

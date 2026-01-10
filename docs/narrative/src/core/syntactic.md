@@ -59,11 +59,20 @@ This module is **self-contained** with no external dependencies. It includes:
 
 | File | Usage |
 |------|-------|
+| **`src/core/component-vectors.ts`** | `SYNTVector` 타입은 이 모듈의 분석 결과를 구조화. [component-vectors.md](component-vectors.md) 참조 |
 | `src/core/types.ts` | Defines `SyntacticComplexity` interface that this module implements |
 | `src/core/bottleneck.ts` | Uses component type 'SYNT' for cascade analysis; references syntactic error patterns |
 | Task generation system | (Expected) Calibrates task difficulty using `complexityScore` and `estimatedCEFR` |
 | Content filtering | (Expected) Uses `matchesCEFRLevel()` to filter appropriate content |
 | Claude prompts | (Expected) Uses `getSimplificationSuggestions()` for content adaptation |
+
+**SYNTVector 연결**: 이 모듈의 출력이 `SYNTVector`의 차원 값을 채웁니다:
+
+- `analyzeSyntacticComplexity().complexityScore` → `SYNTVector.complexityScore`
+- `analyzeSyntacticComplexity().subordinationIndex` → `SYNTVector.dependentClausesPerClause`
+- `analyzeSyntacticComplexity().dependencyDepth` → `SYNTVector.embeddingDepth`
+- `estimateCEFRLevel()` → `SYNTVector.cefrLevel`
+- Lu (2010) 메트릭: `meanLengthOfClause`, `complexNominalsPerClause` 등
 
 ### Data Flow
 

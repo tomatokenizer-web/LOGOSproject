@@ -39,6 +39,13 @@ This module is intentionally **dependency-free** within the codebase - it contai
 
 ### Dependents (What Needs This)
 
+- **`src/core/component-vectors.ts`**: 모든 컴포넌트 벡터의 `l1TransferCoefficient` 값에 활용됩니다:
+  - `BaseComponentVector.l1TransferCoefficient` 값 계산
+  - `computeComponentPriority()`에서 `transferAdjustment` 계산에 사용
+  - 각 컴포넌트별 전이 효과 반영 (PHON의 음운 전이, LEX의 동족어 등)
+
+  > 참조: [component-vectors.md](component-vectors.md) - L1 전이 계수가 우선순위에 미치는 영향
+
 - `src/core/priority.ts`: Uses `calculateTransferGain()` to reduce the "Cost" denominator in the Priority = FRE / Cost formula. When transfer gain is high, learning cost decreases, boosting priority.
 
 - `src/main/services/state-priority.service.ts`: Integrates transfer effects when building the learning queue, ensuring items with positive transfer are surfaced appropriately.

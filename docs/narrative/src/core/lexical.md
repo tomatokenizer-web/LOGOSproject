@@ -79,15 +79,25 @@ The lexical module is designed as a **pure TypeScript implementation** with zero
 
 **Direct consumers**:
 
-1. **`src/core/types.ts`**: Imports conceptual alignment (the `LexicalObject` shape matches the `LanguageObject` contract)
+1. **`src/core/component-vectors.ts`**: `LEXVector` (= `ComponentLEXVector`) 타입은 이 모듈의 분석 결과를 구조화합니다:
+   - `analyzeLexical().concreteness` → `LEXVector.concreteness`
+   - `analyzeLexical().imageability` → `LEXVector.imageability`
+   - `analyzeLexical().polysemyCount` → `LEXVector.polysemyCount`
+   - `analyzeLexical().frequencyBand` → `LEXVector.ageOfAcquisition` 추정에 활용
+   - `analyzeLexical().collocations` → `LEXVector.topCollocations`, `avgCollocationStrength`
+   - `analyzeLexical().register` → `LEXVector.registerFlexibility`
 
-2. **`src/core/morphology.ts`**: Shares lemmatization logic; morphological analysis complements lexical analysis for complete word representation
+   > 참조: [component-vectors.md](component-vectors.md) - LEXVector 구조 및 Cost Modifier 계산
 
-3. **`src/core/semantic-network.ts`**: Uses lexical items as nodes; collocations from lexical analysis feed into network edges
+2. **`src/core/types.ts`**: Imports conceptual alignment (the `LexicalObject` shape matches the `LanguageObject` contract)
 
-4. **Future: `src/main/services/state-priority.service.ts`**: Will consume FRE metrics from LexicalObjects to compute learning priority
+3. **`src/core/morphology.ts`**: Shares lemmatization logic; morphological analysis complements lexical analysis for complete word representation
 
-5. **Future: Corpus Pipeline**: Will use `extractLexicalObjects()` and `createVocabularyProfile()` during text ingestion
+4. **`src/core/semantic-network.ts`**: Uses lexical items as nodes; collocations from lexical analysis feed into network edges
+
+5. **Future: `src/main/services/state-priority.service.ts`**: Will consume FRE metrics from LexicalObjects to compute learning priority
+
+6. **Future: Corpus Pipeline**: Will use `extractLexicalObjects()` and `createVocabularyProfile()` during text ingestion
 
 ### Data Flow
 
