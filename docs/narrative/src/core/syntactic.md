@@ -1,568 +1,548 @@
-# Syntactic Complexity Analysis Module
+# 통사 복잡도 분석 모듈
 
-> **Last Updated**: 2026-01-04
-> **Code Location**: `src/core/syntactic.ts`
-> **Status**: Active
-> **Theoretical Foundation**: ALGORITHMIC-FOUNDATIONS.md Part 6.2, THEORETICAL-FOUNDATIONS.md Section 2.2 (LanguageObjectVector.syntactic)
+> **Code**: `src/core/syntactic.ts`
+> **Tier**: 1 (Core Algorithm)
 
 ---
 
-## Context & Purpose
-
-### Why This Module Exists
-
-The Syntactic Complexity Analysis module answers: **"How structurally complex is this sentence, and what CEFR level does it require?"**
-
-Consider these two sentences:
-1. "The patient was admitted." (A2 level)
-2. "Although the patient initially presented with symptoms that suggested a routine infection, subsequent laboratory findings, which were obtained after the physician ordered additional tests, indicated a more complex underlying condition that required immediate intervention." (C1/C2 level)
-
-Both convey medical information, but the second requires far more cognitive processing due to:
-- Multiple embedded clauses (layered thoughts within thoughts)
-- Passive constructions ("was obtained", "were obtained")
-- Long dependency distances (words that relate to each other are far apart)
-- High subordination (many dependent clauses attached to main clauses)
-
-**Business Need**: LOGOS serves learners at different proficiency levels preparing for different goals (CELBAN for nurses, IELTS for academics, business English, etc.). Syntactic analysis enables:
-
-1. **Content Difficulty Matching**: Ensure learners see sentences appropriate for their level
-2. **CEFR Level Estimation**: Map any text to A1-C2 proficiency scale automatically
-3. **Task Difficulty Calibration**: Harder syntax = harder task (adjust IRT parameters)
-4. **Genre Compliance**: Medical SOAP notes have different syntactic expectations than business emails
-5. **Simplification Guidance**: Tell content creators how to simplify text for lower levels
-
-### When Used
-
-- **LanguageObjectVector generation**: Every sentence/text gets analyzed for its `syntactic` property
-- **Content selection**: Filter available content by learner's current CEFR level
-- **Task generation**: Calibrate task difficulty based on syntactic complexity score
-- **Genre detection**: Identify if text follows SOAP, SBAR, academic, business, or legal patterns
-- **Simplification suggestions**: Provide actionable feedback for content adaptation
-- **Theta estimation support**: Syntactic complexity feeds into theta_syntactic ability measurement
-- **Mastery stage matching**: Ensure sentence complexity matches learner's current stage (0-4)
-
----
-
-## Microscale: Direct Relationships
-
-### Dependencies (What This Needs)
-
-This module is **self-contained** with no external dependencies. It includes:
-- Built-in CEFR complexity targets (`CEFR_COMPLEXITY_TARGETS`)
-- Subordinating conjunction database (`SUBORDINATORS`)
-- Coordinating conjunction list (`COORDINATORS`)
-- Passive voice pattern detection (`PASSIVE_AUXILIARIES`)
-- Part-of-speech pattern matching (`NOUN_PATTERNS`, `VERB_PATTERNS`)
-- Genre structure definitions (`GENRE_STRUCTURES`)
-
-### Dependents (What Needs This)
-
-| File | Usage |
-|------|-------|
-| **`src/core/component-vectors.ts`** | `SYNTVector` 타입은 이 모듈의 분석 결과를 구조화. [component-vectors.md](component-vectors.md) 참조 |
-| `src/core/types.ts` | Defines `SyntacticComplexity` interface that this module implements |
-| `src/core/bottleneck.ts` | Uses component type 'SYNT' for cascade analysis; references syntactic error patterns |
-| Task generation system | (Expected) Calibrates task difficulty using `complexityScore` and `estimatedCEFR` |
-| Content filtering | (Expected) Uses `matchesCEFRLevel()` to filter appropriate content |
-| Claude prompts | (Expected) Uses `getSimplificationSuggestions()` for content adaptation |
-
-**SYNTVector 연결**: 이 모듈의 출력이 `SYNTVector`의 차원 값을 채웁니다:
-
-- `analyzeSyntacticComplexity().complexityScore` → `SYNTVector.complexityScore`
-- `analyzeSyntacticComplexity().subordinationIndex` → `SYNTVector.dependentClausesPerClause`
-- `analyzeSyntacticComplexity().dependencyDepth` → `SYNTVector.embeddingDepth`
-- `estimateCEFRLevel()` → `SYNTVector.cefrLevel`
-- Lu (2010) 메트릭: `meanLengthOfClause`, `complexNominalsPerClause` 등
-
-### Data Flow
-
-```
-Text Input (e.g., "Although the patient reported improvement, the physician recommended additional tests.")
-    |
-    v
-analyzeSyntacticComplexity()
-    |
-    +---> splitSentences(): Divide text into individual sentences
-    |
-    +---> For each sentence:
-    |     |
-    |     +---> tokenize(): Split into words
-    |     |         Result: ['Although', 'the', 'patient', 'reported', ...]
-    |     |
-    |     +---> analyzeClauseStructure(): Find subordinate/main clauses
-    |     |         Result: { mainClauses: 1, subordinateClauses: 1,
-    |     |                   subordinateTypes: ['concessive'], coordinationCount: 0 }
-    |     |
-    |     +---> countPassiveConstructions(): Detect passive voice
-    |     |         Result: 0 (no passives in this sentence)
-    |     |
-    |     +---> POS ratio calculation: nouns vs verbs
-    |     |
-    |     +---> Dependency depth estimation: log2(length) + subordinates
-    |     |
-    |     v
-    |     SyntacticComplexity metrics for this sentence
-    |
-    +---> averageMetrics(): Combine all sentence metrics
-    |
-    +---> calculateComplexityScore(): Weighted combination (0-1)
-    |
-    +---> estimateCEFRLevel(): Map score to A1-C2
-    |
-    v
-Final SyntacticComplexity Result
-    {
-      sentenceLength: 11,
-      dependencyDepth: 5,
-      clauseCount: 2,
-      subordinationIndex: 0.5,
-      passiveRatio: 0,
-      nominalRatio: 0.4,
-      averageDependencyDistance: 3.67,
-      complexityScore: 0.52,
-      estimatedCEFR: 'B2'
-    }
-```
-
----
-
-## Macroscale: System Integration
-
-### Architectural Role
-
-This module sits in the **Language Analysis Layer** of LOGOS architecture:
-
-```
-Layer 1: User Interface (React)
-    |
-Layer 2: IPC Communication (Electron)
-    |
-Layer 3: Core Algorithms <-- syntactic.ts lives here
-    |     |- irt.ts (ability estimation)
-    |     |- fsrs.ts (spacing)
-    |     |- pmi.ts (collocations)
-    |     |- morphology.ts (word structure)
-    |     |- syntactic.ts (sentence structure) <-- YOU ARE HERE
-    |     |- bottleneck.ts (uses syntactic for SYNT component)
-    |     +- priority.ts (scheduling)
-    |
-Layer 4: Database (Prisma/SQLite)
-```
-
-### Big Picture Impact
-
-Syntactic analysis enables four critical LOGOS capabilities:
-
-**1. CEFR-Based Content Selection**
-
-The Common European Framework of Reference (CEFR) defines six proficiency levels:
-- A1/A2: Basic user (simple sentences, concrete vocabulary)
-- B1/B2: Independent user (connected discourse, abstract topics)
-- C1/C2: Proficient user (complex structures, nuanced expression)
-
-This module maps any text to these levels automatically:
-
-| CEFR Level | Sentence Length | Clause Count | Subordination Index | Example |
-|------------|-----------------|--------------|---------------------|---------|
-| A1 | ~8 words | 1 clause | 0% | "The doctor sees patients." |
-| A2 | ~12 words | 1-2 clauses | 10% | "The doctor sees patients every day." |
-| B1 | ~15 words | 2 clauses | 20% | "The doctor sees patients who have appointments." |
-| B2 | ~20 words | 2-3 clauses | 30% | "Although the doctor was busy, she saw patients who had urgent concerns." |
-| C1 | ~25 words | 3 clauses | 40% | Complex embedded structures with multiple subordination levels |
-| C2 | ~30 words | 4+ clauses | 50% | Native-like complexity with sophisticated syntactic patterns |
-
-**2. LanguageObjectVector Generation**
-
-Every vocabulary item and sentence pattern in LOGOS has a multi-dimensional vector representation:
-
-```
-LanguageObjectVector = {
-    orthographic: ...,
-    phonological: ...,
-    morphological: ...,
-    syntactic: <-- This module provides this (via toSyntacticVector)
-    semantic: ...,
-    pragmatic: ...
-}
-```
-
-The `syntactic` component includes:
-- Part of speech classification
-- Subcategorization frames (e.g., [+transitive], [+ditransitive])
-- Argument structure patterns (Subject-Verb-Object, etc.)
-- Complexity level (simple/moderate/complex)
-- Required CEFR level
-
-**3. Genre-Specific Structure Detection**
-
-Professional domains have specific syntactic conventions:
-
-| Genre | Domain | Expected Sections | CEFR Range | Example Patterns |
-|-------|--------|-------------------|------------|------------------|
-| SOAP Note | Medical | Subjective, Objective, Assessment, Plan | B2-C1 | "Patient reports...", "Vitals:", "Impression:" |
-| SBAR Handoff | Medical | Situation, Background, Assessment, Recommendation | B1-B2 | "I am calling about...", "The patient was admitted for..." |
-| Academic Abstract | Academic | Background, Methods, Results, Conclusions | C1-C2 | "This study examines...", "Results indicate..." |
-| Business Email | Business | Greeting, Purpose, Details, Action, Closing | B1-B2 | "I am writing to...", "Please find attached..." |
-| Legal Contract | Legal | Parties, Recitals, Terms, Signatures | C1-C2 | "WHEREAS...", "Notwithstanding..." |
-
-The `detectGenre()` and `analyzeGenreCompliance()` functions enable LOGOS to:
-- Identify what type of text a learner is working with
-- Check if their produced text follows expected conventions
-- Suggest missing sections or structural improvements
-
-**4. Difficulty Calibration for IRT**
-
-Item Response Theory (IRT) needs difficulty parameters for each learning item. Syntactic complexity directly feeds this:
-
-```
-Base IRT Difficulty = f(complexityScore, subordinationIndex, passiveRatio, ...)
-```
-
-Higher syntactic complexity = higher difficulty parameter = item presented to more advanced learners.
-
-### Critical Path Analysis
-
-**Importance Level**: Medium-High
-
-- **If this fails**: Content cannot be matched to learner levels, difficulty estimation becomes less accurate, genre compliance checking unavailable
-- **Fallback behavior**: Content can still be presented without level matching, but learners may encounter inappropriately difficult or easy material
-- **User-facing impact**: Learners might feel frustrated (too hard) or bored (too easy) if content matching fails
-- **Cascading effect**: Incorrect CEFR estimation affects task generation, bottleneck detection, and progress tracking
-
----
-
-## Technical Concepts (Plain English)
-
-### Subordination Index
-
-**Technical**: The ratio of subordinate clauses to total clauses in a sentence, measuring syntactic embedding depth.
-
-**Plain English**: How many "thoughts within thoughts" are there? Consider:
-- "The doctor left." = 0% subordination (one main thought)
-- "The doctor left because the patient recovered." = 50% subordination (one main thought, one dependent thought)
-
-Higher subordination = more complex sentence structure = harder to process.
-
-**Why We Use It**: Languages learners struggle with nested clauses. A sentence with 50% subordination requires tracking multiple ideas simultaneously.
-
-### Dependency Depth
-
-**Technical**: The maximum path length from the root of the dependency tree to any leaf node, measuring how deeply nested the syntactic structure is.
-
-**Plain English**: Imagine a sentence as a family tree where words are connected to their "parent" words. Dependency depth is how many generations the deepest branch has.
-
-- "The cat sat." = Depth 2 (sat -> cat, sat -> the)
-- "The cat that I saw yesterday sat quietly." = Depth 5+ (many levels of parent-child relationships)
-
-**Why We Use It**: Deeper trees require more working memory to parse. Beginning learners can handle depth 2-3; advanced learners can process depth 6-7.
-
-### Passive Ratio
-
-**Technical**: The proportion of verb phrases constructed in passive voice (be + past participle) relative to total verb phrases.
-
-**Plain English**: Is the sentence structured as "X did Y" (active) or "Y was done by X" (passive)?
-- Active: "The nurse administered the medication."
-- Passive: "The medication was administered by the nurse."
-
-Passive voice is grammatically more complex and less common in everyday speech.
-
-**Why We Use It**: Passive constructions are harder for learners because:
-1. The grammatical subject is not the "doer"
-2. The agent may be omitted ("The medication was administered.")
-3. Requires additional cognitive processing to understand who did what
-
-### Nominal Ratio
-
-**Technical**: The ratio of nouns to the sum of nouns and verbs, indicating the degree of nominal style in the text.
-
-**Plain English**: Does the text use more "thing words" (nouns) or "action words" (verbs)?
-- Verbal style: "The researcher investigated how patients responded."
-- Nominal style: "The researcher's investigation of patient responses..."
-
-Academic and legal writing tends to be more nominal (noun-heavy).
-
-**Why We Use It**: High nominal ratio indicates formal/academic style, which correlates with higher CEFR levels and greater processing difficulty.
-
-### Clause Structure Analysis
-
-**Technical**: Identification and classification of main clauses (independent), subordinate clauses (dependent), and their types (relative, temporal, conditional, etc.).
-
-**Plain English**: Breaking a sentence into its "idea chunks" and understanding how they connect:
-- **Main clause**: Can stand alone as a sentence ("The doctor arrived.")
-- **Subordinate clause**: Depends on a main clause ("...because the patient called.")
-- **Types**: Why dependent (causal), when dependent (temporal), if dependent (conditional), etc.
-
-**Why We Use It**: Different subordinate clause types have different difficulty levels and acquisition orders. Relative clauses (who/which/that) are learned before concessive clauses (although/even though).
+## 핵심 수식
 
 ### Complexity Score
 
-**Technical**: A weighted combination of multiple syntactic metrics normalized to a 0-1 scale, enabling direct CEFR mapping.
-
-**Plain English**: A single number that summarizes "how complex is this text?" by combining:
-- Sentence length (20% weight)
-- Subordination index (20% weight)
-- Dependency depth (15% weight)
-- Clause count (15% weight)
-- Passive ratio (10% weight)
-- Nominal ratio (10% weight)
-- Average dependency distance (10% weight)
-
-Score of 0.1 = A1 level (very simple)
-Score of 1.0 = C2 level (native-like complexity)
-
-**Why We Use It**: One number is easier to work with than seven separate metrics. The weights reflect research on what makes text difficult for L2 learners.
-
----
-
-## Key Functions Explained
-
-### analyzeSyntacticComplexity(text)
-
-**Purpose**: Complete syntactic analysis of a text (single sentence or paragraph).
-
-**Process**:
-1. Split text into individual sentences
-2. Analyze each sentence for:
-   - Word count (sentence length)
-   - Clause structure (main, subordinate, coordination)
-   - Passive voice constructions
-   - Noun vs. verb ratio
-   - Estimated dependency depth
-   - Average dependency distance
-3. Average metrics across all sentences
-4. Calculate overall complexity score (0-1)
-5. Map to CEFR level (A1-C2)
-
-**Returns**: `SyntacticComplexity` with all metrics and estimated CEFR level
-
-### analyzeClauseStructure(sentence)
-
-**Purpose**: Identify all clauses in a sentence and classify them.
-
-**How It Works**:
-- Searches for subordinating conjunctions: "who", "which", "because", "although", "if", "when", etc.
-- Each subordinator indicates one subordinate clause
-- Counts coordinating conjunctions: "and", "but", "or"
-- Main clauses = 1 (base) + coordination count
-
-**Returns**: `ClauseAnalysis` with mainClauses, subordinateClauses, subordinateTypes[], coordinationCount
-
-### estimateCEFRLevel(metrics)
-
-**Purpose**: Map complexity score to CEFR level.
-
-**Mapping**:
-| Score Range | CEFR Level |
-|-------------|------------|
-| 0 - 0.15 | A1 |
-| 0.15 - 0.30 | A2 |
-| 0.30 - 0.50 | B1 |
-| 0.50 - 0.70 | B2 |
-| 0.70 - 0.85 | C1 |
-| 0.85 - 1.00 | C2 |
-
-### toSyntacticVector(word, context?)
-
-**Purpose**: Generate the syntactic component for LanguageObjectVector.
-
-**What It Calculates**:
-- Part of speech (noun, verb, adjective, etc.)
-- Subcategorization frames ([+transitive], [+intransitive], [+ditransitive])
-- Argument structure pattern (SVO, S-LinkingV-Complement, etc.)
-- Complexity level based on context
-- Required CEFR level
-
-### getSimplificationSuggestions(text, targetLevel)
-
-**Purpose**: Provide actionable advice for simplifying text to a lower CEFR level.
-
-**Example Suggestions**:
-- "Split long sentences into shorter ones" (if length exceeds target)
-- "Replace subordinate clauses with simple sentences" (if subordination too high)
-- "Convert passive voice to active voice" (if passive ratio too high)
-- "Use more verbs instead of nominalized forms" (if nominal ratio too high)
-
-### detectGenre(text)
-
-**Purpose**: Identify which professional genre a text belongs to.
-
-**How It Works**:
-- Searches for genre-specific section markers (e.g., "Subjective:", "WHEREAS")
-- Searches for genre-specific phrase patterns
-- Returns matching `GenreStructure` if found, null otherwise
-
-### analyzeGenreCompliance(text, genre)
-
-**Purpose**: Check if text follows expected genre conventions.
-
-**Returns**:
-- Compliance score (0-1): How many expected sections are present
-- Missing sections list
-- Suggestions for improvement
-
----
-
-## Part-of-Speech Estimation
-
-### Heuristic Approach
-
-Without a full NLP library, POS is estimated using:
-
-1. **Closed-class lookup**: Determiners, pronouns, prepositions, conjunctions, auxiliaries are finite sets
-2. **Suffix patterns**:
-   - "-ly" typically indicates adverb
-   - "-tion/-ment/-ness/-ity" typically indicate noun
-   - "-ful/-less/-ous/-ive/-al" typically indicate adjective
-   - "-ize/-ify/-ate/-en" typically indicate verb
-   - "-ing/-ed" typically indicate verb forms
-
-### Subcategorization Frames
-
-Verbs are classified by what they can combine with:
-
-| Frame | Description | Example Verbs |
-|-------|-------------|---------------|
-| +transitive | Takes a direct object | make, take, give, see |
-| +intransitive | No direct object | go, come, arrive, sleep |
-| +ditransitive | Takes two objects | give, tell, show, send |
-
-### Argument Structure Patterns
-
-| Pattern | Structure | Example |
-|---------|-----------|---------|
-| Subject-Verb-Object | SVO | "The nurse administered the medication." |
-| Subject-Linking Verb-Complement | SVC | "The patient seems tired." |
-| Subject-Verb-Indirect Object-Direct Object | SVOO | "The doctor gave the patient the prescription." |
-
----
-
-## CEFR Complexity Targets
-
-The module defines expected complexity metrics for each CEFR level:
-
-| Metric | A1 | A2 | B1 | B2 | C1 | C2 |
-|--------|----|----|----|----|----|----|
-| Sentence Length | 8 | 12 | 15 | 20 | 25 | 30 |
-| Dependency Depth | 2 | 3 | 4 | 5 | 6 | 7 |
-| Clause Count | 1 | 1.5 | 2 | 2.5 | 3 | 4 |
-| Subordination Index | 0 | 0.1 | 0.2 | 0.3 | 0.4 | 0.5 |
-| Passive Ratio | 0 | 0.05 | 0.1 | 0.15 | 0.2 | 0.25 |
-| Nominal Ratio | 0.4 | 0.45 | 0.5 | 0.55 | 0.6 | 0.65 |
-| Avg Dependency Distance | 2 | 3 | 4 | 5 | 6 | 7 |
-| Complexity Score | 0.1 | 0.25 | 0.4 | 0.6 | 0.8 | 1.0 |
-
-These targets enable:
-- `matchesCEFRLevel()`: Check if text is within tolerance of target
-- `getSimplificationSuggestions()`: Compare current vs. target metrics
-- Weighted score calculation: Normalize against C2 as ceiling
-
----
-
-## Subordinating Conjunction Classification
-
-| Type | Conjunctions | Example |
-|------|--------------|---------|
-| **Relative** | who, whom, whose, which, that | "The patient who arrived first..." |
-| **Temporal** | when, while, after, before, until, since, as soon as, once | "...after the surgery was completed..." |
-| **Conditional** | if, unless, provided, providing, supposing | "If the test is negative..." |
-| **Causal** | because, since, as, for, due to | "...because the symptoms persisted..." |
-| **Concessive** | although, though, even though, whereas, even if | "Although the prognosis was good..." |
-| **Purpose** | so that, in order that, so | "...so that the patient could recover..." |
-| **Nominal** | whether, how, what, why, where | "...how the treatment worked..." |
-
-This classification supports:
-- Fine-grained clause analysis
-- Acquisition order research (some types are learned before others)
-- Error pattern detection in bottleneck analysis
-
----
-
-## Integration with Mastery Stages
-
-The `isSuitableForStage()` function maps mastery stages to appropriate CEFR levels:
-
-| Mastery Stage | Description | Suitable CEFR |
-|---------------|-------------|---------------|
-| 0 (New) | First exposure | A1 only |
-| 1 (Recognition) | Can identify with cues | A1, A2 |
-| 2 (Recall) | Can remember with effort | A2, B1 |
-| 3 (Controlled Production) | Can produce with focus | B1, B2 |
-| 4 (Automatic) | Fluent access | B2, C1, C2 |
-
-This ensures learners at early mastery stages see simpler sentences, while advanced learners encounter native-like complexity.
-
----
-
-## Integration with Bottleneck Detection
-
-The Bottleneck module (Part 7) uses syntactic analysis as the SYNT component in its cascade:
+통사 복잡도를 0-1 범위로 정규화:
 
 ```
-PHON -> MORPH -> LEX -> SYNT -> PRAG
-                        ^
-                        |
-   Syntactic errors here may cause downstream PRAG errors
-   But may also be caused by upstream LEX issues
+S = Σᵢ wᵢ × normalize(metricᵢ / C2_target)
+
+가중치:
+  sentenceLength:      0.20
+  subordinationIndex:  0.20
+  dependencyDepth:     0.15
+  clauseCount:         0.15
+  passiveRatio:        0.10
+  nominalRatio:        0.10
+  avgDependencyDist:   0.10
 ```
 
-**Example Cascade Detection**:
-1. User struggles with passive voice constructions (SYNT error)
-2. Bottleneck system checks: Are LEX errors also elevated?
-3. If yes: Root cause may be vocabulary gaps (LEX) causing syntax failures
-4. If no: Focus intervention on syntactic patterns directly
+### Lu (2010, 2011) 메트릭
 
-**Syntactic Error Patterns** (detected by bottleneck.ts):
-- Clause embedding errors (subordination mistakes)
-- Subject-verb agreement failures
-- Passive voice confusion
-- Word order problems
+학술 연구 기반 통사 복잡도 지표:
 
----
+```
+MLC = totalWords / totalClauses          (Mean Length of Clause)
+CN/C = complexNominals / totalClauses    (Complex Nominals per Clause)
+DC/C = dependentClauses / totalClauses   (Dependent Clauses per Clause)
+MLT = totalWords / tUnitCount            (Mean Length of T-unit)
+C/T = totalClauses / tUnitCount          (Clauses per T-unit)
+CT/T = complexTUnits / tUnitCount        (Complex T-units Ratio)
+```
 
-## Limitations and Design Decisions
+### Subordination Index
 
-### Heuristic-Based Approach
+종속절 비율:
 
-This module uses **rule-based heuristics** rather than machine learning because:
-1. **No external dependencies**: Runs entirely in browser/Electron without network
-2. **Predictable behavior**: Same input always produces same output
-3. **Interpretable**: We can explain why a sentence got its score
-4. **Sufficient accuracy**: For CEFR estimation, heuristics achieve ~80-85% agreement with expert ratings
+```
+SI = subordinateClauses / (mainClauses + subordinateClauses)
 
-### Known Limitations
+mainClauses = 1 + coordinationCount
+```
 
-1. **No true dependency parsing**: Depth is estimated from subordination count and sentence length, not actual parse trees
-2. **Ambiguous subordinators**: "that" can be relative pronoun or complementizer; "since" can be temporal or causal
-3. **Passive detection is pattern-based**: May miss irregular passives or flag false positives
-4. **POS tagging is heuristic**: ~70% accuracy compared to full NLP taggers
-5. **English-only**: Subordinator lists and patterns are English-specific
+### Dependency Depth Estimation
 
-### Future Improvements
+의존 구조 깊이 추정 (휴리스틱):
 
-- Integration with lightweight dependency parser (e.g., wink-nlp)
-- Multi-language support via language-specific pattern modules
-- Learning from user feedback to improve heuristic weights
-- Genre-specific complexity adjustments
+```
+DD = ceil(log₂(sentenceLength + 1)) + subordinateClauseCount
+```
 
 ---
 
-## Change History
+## CEFR 복잡도 목표값
 
-### 2026-01-04 - Initial Implementation
-- **What Changed**: Created complete syntactic complexity analysis module
-- **Why**: Enable CEFR-based content matching and LanguageObjectVector.syntactic generation
-- **Impact**: Foundation for difficulty-appropriate content presentation
+### CEFR_COMPLEXITY_TARGETS (lines 216-307)
 
-### Features Implemented
-- Sentence complexity metrics (8 dimensions)
-- CEFR level estimation and mapping
-- Clause structure analysis (main/subordinate, coordination)
-- Subordinate clause type classification (7 types)
-- Genre-specific structure detection (5 genres: SOAP, SBAR, academic, business, legal)
-- SyntacticVector generation for LanguageObjectVector
-- Part-of-speech estimation (heuristic)
-- Verb subcategorization inference
-- Argument structure pattern identification
-- Simplification suggestions generator
-- Mastery stage suitability checking
-- CEFR level comparison utilities
+| Level | Length | Depth | Clauses | SI | Passive | Nominal | MLC | CN/C | DC/C |
+|-------|--------|-------|---------|-----|---------|---------|-----|------|------|
+| A1 | 8 | 2 | 1.0 | 0.00 | 0.00 | 0.40 | 6.0 | 0.2 | 0.00 |
+| A2 | 12 | 3 | 1.5 | 0.10 | 0.05 | 0.45 | 7.0 | 0.4 | 0.15 |
+| B1 | 15 | 4 | 2.0 | 0.20 | 0.10 | 0.50 | 8.0 | 0.6 | 0.25 |
+| B2 | 20 | 5 | 2.5 | 0.30 | 0.15 | 0.55 | 9.5 | 0.85 | 0.35 |
+| C1 | 25 | 6 | 3.0 | 0.40 | 0.20 | 0.60 | 11.0 | 1.1 | 0.45 |
+| C2 | 30 | 7 | 4.0 | 0.50 | 0.25 | 0.65 | 12.5 | 1.4 | 0.55 |
+
+### CEFR 추정 (lines 788-797)
+
+```typescript
+function estimateCEFRLevel(metrics: SyntacticComplexity): CEFRLevel {
+  const score = metrics.complexityScore;
+
+  if (score <= 0.15) return 'A1';
+  if (score <= 0.30) return 'A2';
+  if (score <= 0.50) return 'B1';
+  if (score <= 0.70) return 'B2';
+  if (score <= 0.85) return 'C1';
+  return 'C2';
+}
+```
+
+---
+
+## 절 구조 분석
+
+### SUBORDINATORS 데이터베이스 (lines 312-340)
+
+**관계절** (Relative):
+```typescript
+'who', 'whom', 'whose', 'which', 'that'
+```
+
+**시간절** (Temporal):
+```typescript
+'when', 'while', 'after', 'before', 'until', 'since', 'as soon as', 'once'
+```
+
+**조건절** (Conditional):
+```typescript
+'if', 'unless', 'provided', 'providing', 'supposing'
+```
+
+**인과절** (Causal):
+```typescript
+'because', 'as', 'for', 'due to'
+```
+
+**양보절** (Concessive):
+```typescript
+'although', 'though', 'even though', 'whereas', 'even if'
+```
+
+**목적절** (Purpose):
+```typescript
+'so that', 'in order that', 'so'
+```
+
+**명사절** (Nominal):
+```typescript
+'whether', 'how', 'what', 'why', 'where'
+```
+
+### analyzeClauseStructure() (lines 508-542)
+
+```typescript
+function analyzeClauseStructure(sentence: string): ClauseAnalysis {
+  const lowerSentence = sentence.toLowerCase();
+  const subordinateTypes: SubordinateClauseType[] = [];
+  let subordinateClauses = 0;
+
+  // 종속 접속사별 절 카운트
+  for (const [marker, type] of Object.entries(SUBORDINATORS)) {
+    const regex = new RegExp(`\\b${marker}\\b`, 'gi');
+    const matches = lowerSentence.match(regex);
+    if (matches) {
+      subordinateClauses += matches.length;
+      subordinateTypes.push(...Array(matches.length).fill(type));
+    }
+  }
+
+  // 등위 접속사 카운트
+  let coordinationCount = 0;
+  for (const coord of COORDINATORS) {  // 'and', 'but', 'or', 'nor', 'for', 'yet', 'so'
+    const regex = new RegExp(`\\b${coord}\\b`, 'gi');
+    const matches = lowerSentence.match(regex);
+    if (matches) {
+      coordinationCount += matches.length;
+    }
+  }
+
+  // 주절 = 1 (기본) + 등위 접속
+  const mainClauses = 1 + coordinationCount;
+
+  return {
+    mainClauses,
+    subordinateClauses,
+    subordinateTypes: [...new Set(subordinateTypes)],
+    coordinationCount
+  };
+}
+```
+
+---
+
+## Complex Nominal 탐지
+
+### Lu (2010) 정의
+
+Complex nominal = 전치/후치 수식을 받는 명사구:
+
+1. **형용사 + 명사**: `important finding`, `clinical assessment`
+2. **명사 + 전치사구**: `treatment of infection`
+3. **명사 + 관계절**: `patient who presented`
+4. **명사 + 분사**: `findings based on`
+5. **분사 + 명사**: `increasing evidence`
+6. **동명사 주어**: `Taking medication is...`
+
+### detectComplexNominals() (lines 611-683)
+
+```typescript
+function detectComplexNominals(sentence: string): ComplexNominal[] {
+  const complexNominals: ComplexNominal[] = [];
+
+  // 1. 형용사 + 명사 패턴
+  const adjNounRegex = /\b(important|significant|complex|...)\s+\w+(tion|ment|...)\b/gi;
+  while ((match = adjNounRegex.exec(sentence)) !== null) {
+    complexNominals.push({
+      phrase: match[0],
+      modificationType: 'adjective',
+      position: match.index
+    });
+  }
+
+  // 2. 명사 + 전치사구 패턴
+  const nounPPRegex = /\b\w+(tion|...)\s+(of|in|for|with|...)\s+(the|a|...)\b/gi;
+  // ...
+
+  // 3. 명사 + 관계절 패턴
+  const nounRelRegex = /\b\w+\s+(who|which|that|...)\s+\w+/gi;
+  // ...
+
+  // 4. 명사 + 분사 패턴
+  // 5. 분사 + 명사 패턴
+  // 6. 동명사 주어 패턴
+
+  // 위치 기반 중복 제거
+  return uniqueNominals;
+}
+```
+
+---
+
+## T-unit 메트릭
+
+### T-unit 정의 (Hunt, 1965)
+
+T-unit = minimal terminable unit
+       = 하나의 주절 + 부속 종속절
+
+```
+"The doctor arrived, and she examined the patient."
+→ 2 T-units: "The doctor arrived" + "she examined the patient"
+
+"Although tired, the doctor examined the patient."
+→ 1 T-unit (주절 + 종속절)
+```
+
+### calculateTUnitMetrics() (lines 694-750)
+
+```typescript
+function calculateTUnitMetrics(text: string): TUnitMetrics {
+  const sentences = splitSentences(text);
+
+  let totalWords = 0;
+  let totalTUnits = 0;
+  let totalClauses = 0;
+  let complexTUnits = 0;
+  let totalCoordPhrases = 0;
+  let totalVerbPhrases = 0;
+
+  for (const sentence of sentences) {
+    const words = tokenize(sentence);
+    totalWords += words.length;
+
+    const clauseAnalysis = analyzeClauseStructure(sentence);
+    const clauses = clauseAnalysis.mainClauses + clauseAnalysis.subordinateClauses;
+    totalClauses += clauses;
+
+    // T-units = 주절 수
+    totalTUnits += clauseAnalysis.mainClauses;
+
+    // Complex T-units = 종속절 포함 T-unit
+    if (clauseAnalysis.subordinateClauses > 0) {
+      complexTUnits += Math.min(
+        clauseAnalysis.mainClauses,
+        clauseAnalysis.subordinateClauses
+      );
+    }
+
+    totalCoordPhrases += clauseAnalysis.coordinationCount;
+    totalVerbPhrases += (sentence.match(VERB_PATTERNS) || []).length;
+  }
+
+  return {
+    tUnitCount: totalTUnits,
+    meanLengthOfSentence: totalWords / sentences.length,       // MLS
+    meanLengthOfTUnit: totalWords / totalTUnits,               // MLT
+    clausesPerTUnit: totalClauses / totalTUnits,               // C/T
+    complexTUnitsRatio: complexTUnits / totalTUnits,           // CT/T
+    coordinatePhrasesPerTUnit: totalCoordPhrases / totalTUnits,// CP/T
+    verbPhrasesPerTUnit: totalVerbPhrases / totalTUnits        // VP/T
+  };
+}
+```
+
+---
+
+## 수동태 탐지
+
+### countPassiveConstructions() (lines 547-565)
+
+```typescript
+function countPassiveConstructions(sentence: string): number {
+  let count = 0;
+
+  // 패턴: be동사 + 과거분사 (-ed)
+  const passiveAux = ['is', 'are', 'was', 'were', 'been', 'being', 'be'];
+
+  for (const aux of passiveAux) {
+    const pattern = new RegExp(`\\b${aux}\\s+\\w+ed\\b`, 'gi');
+    const matches = sentence.match(pattern);
+    if (matches) {
+      count += matches.length;
+    }
+  }
+
+  // "by + agent" 추가 확인
+  if (/\bby\s+(the|a|an|\w+)\b/i.test(sentence)) {
+    count = Math.max(count, 1);
+  }
+
+  return count;
+}
+```
+
+---
+
+## 복잡도 점수 계산
+
+### calculateComplexityScore() (lines 802-834)
+
+```typescript
+function calculateComplexityScore(metrics: SyntacticComplexity): number {
+  const weights = {
+    sentenceLength: 0.20,
+    dependencyDepth: 0.15,
+    clauseCount: 0.15,
+    subordinationIndex: 0.20,
+    passiveRatio: 0.10,
+    nominalRatio: 0.10,
+    averageDependencyDistance: 0.10
+  };
+
+  // C2 목표값 대비 정규화
+  const c2 = CEFR_COMPLEXITY_TARGETS['C2'];
+
+  const normalized = {
+    sentenceLength: min(1, metrics.sentenceLength / c2.sentenceLength),
+    dependencyDepth: min(1, metrics.dependencyDepth / c2.dependencyDepth),
+    clauseCount: min(1, metrics.clauseCount / c2.clauseCount),
+    subordinationIndex: min(1, metrics.subordinationIndex / c2.subordinationIndex),
+    passiveRatio: min(1, metrics.passiveRatio / c2.passiveRatio),
+    nominalRatio: min(1, metrics.nominalRatio / c2.nominalRatio),
+    averageDependencyDistance: min(1, metrics.averageDependencyDistance / c2.averageDependencyDistance)
+  };
+
+  // 가중 합
+  let score = 0;
+  for (const [key, weight] of Object.entries(weights)) {
+    score += normalized[key] * weight;
+  }
+
+  return min(1, max(0, score));
+}
+```
+
+---
+
+## 품사 추정
+
+### estimatePartOfSpeech() (lines 891-928)
+
+```typescript
+function estimatePartOfSpeech(word: string): PartOfSpeech {
+  const lower = word.toLowerCase();
+
+  // 폐쇄 클래스 단어 조회
+  if (DETERMINERS.includes(lower)) return 'determiner';
+  if (PRONOUNS.includes(lower)) return 'pronoun';
+  if (PREPOSITIONS.includes(lower)) return 'preposition';
+  if (CONJUNCTIONS.includes(lower)) return 'conjunction';
+  if (AUXILIARIES.includes(lower)) return 'auxiliary';
+
+  // 접미사 기반 추론
+  if (/ly$/.test(lower) && lower.length > 3) return 'adverb';
+  if (/(tion|ment|ness|ity|ism|er|or|ist|ance|ence|ship|hood|dom)$/.test(lower)) {
+    return 'noun';
+  }
+  if (/(ful|less|ous|ive|al|ic|able|ible|ary|ory)$/.test(lower)) {
+    return 'adjective';
+  }
+  if (/(ize|ise|ify|ate|en)$/.test(lower)) return 'verb';
+  if (/ing$/.test(lower)) return 'verb';
+  if (/ed$/.test(lower)) return 'verb';
+
+  return 'unknown';
+}
+```
+
+### Subcategorization 추론 (lines 965-990)
+
+```typescript
+function inferSubcategorization(word: string, pos: PartOfSpeech): string[] {
+  if (pos !== 'verb') return [];
+
+  const frames: string[] = [];
+  const lower = word.toLowerCase();
+
+  // 타동사
+  if (TRANSITIVE_VERBS.includes(lower)) frames.push('+transitive');
+
+  // 자동사
+  if (INTRANSITIVE_VERBS.includes(lower)) frames.push('+intransitive');
+
+  // 이중타동사
+  if (DITRANSITIVE_VERBS.includes(lower)) frames.push('+ditransitive');
+
+  // 기본값: 타동사
+  if (frames.length === 0 && pos === 'verb') {
+    frames.push('+transitive');
+  }
+
+  return frames;
+}
+```
+
+---
+
+## 장르 구조 분석
+
+### GENRE_STRUCTURES (lines 365-401)
+
+| 장르 | 도메인 | 섹션 | CEFR 범위 |
+|------|--------|------|-----------|
+| SOAP_note | medical | Subjective, Objective, Assessment, Plan | B2-C1 |
+| SBAR_handoff | medical | Situation, Background, Assessment, Recommendation | B1-B2 |
+| academic_abstract | academic | Background, Methods, Results, Conclusions | C1-C2 |
+| business_email | business | Greeting, Purpose, Details, Action, Closing | B1-B2 |
+| legal_contract | legal | Parties, Recitals, Terms, Signatures | C1-C2 |
+
+### detectGenre() (lines 1021-1043)
+
+```typescript
+function detectGenre(text: string): GenreStructure | null {
+  const lower = text.toLowerCase();
+
+  for (const genre of GENRE_STRUCTURES) {
+    // 섹션 마커 검색
+    const sectionMatches = genre.sections.filter(s =>
+      lower.includes(s.toLowerCase() + ':') ||
+      lower.includes(s.toLowerCase() + ' -')
+    ).length;
+
+    // 패턴 매칭
+    const patternMatches = genre.patterns.filter(p =>
+      lower.includes(p.toLowerCase().slice(0, 10))
+    ).length;
+
+    // 복수 마커 일치 → 해당 장르
+    if (sectionMatches >= 2 || patternMatches >= 2) {
+      return genre;
+    }
+  }
+
+  return null;
+}
+```
+
+### analyzeGenreCompliance() (lines 1048-1079)
+
+```typescript
+function analyzeGenreCompliance(
+  text: string,
+  genre: GenreStructure
+): { compliance: number; missingSections: string[]; suggestions: string[] } {
+  const lower = text.toLowerCase();
+  const missingSections: string[] = [];
+  const suggestions: string[] = [];
+
+  // 섹션 존재 확인
+  for (const section of genre.sections) {
+    if (!lower.includes(section.toLowerCase())) {
+      missingSections.push(section);
+      suggestions.push(`Add "${section}" section`);
+    }
+  }
+
+  // 복잡도 범위 확인
+  const analysis = analyzeSyntacticComplexity(text);
+  const minLevel = CEFR_COMPLEXITY_TARGETS[genre.targetCEFR.min];
+  const maxLevel = CEFR_COMPLEXITY_TARGETS[genre.targetCEFR.max];
+
+  if (analysis.complexityScore < minLevel.complexityScore) {
+    suggestions.push(`Increase sentence complexity for ${genre.genre} style`);
+  }
+  if (analysis.complexityScore > maxLevel.complexityScore) {
+    suggestions.push(`Simplify sentences for ${genre.genre} readability`);
+  }
+
+  return {
+    compliance: 1 - (missingSections.length / genre.sections.length),
+    missingSections,
+    suggestions
+  };
+}
+```
+
+---
+
+## 핵심 함수
+
+| 함수 | 라인 | 복잡도 | 용도 |
+|------|------|--------|------|
+| `analyzeSyntacticComplexity` | 421-435 | O(n×w) | 전체 복잡도 분석 |
+| `analyzeSingleSentence` | 440-503 | O(w) | 단일 문장 분석 |
+| `analyzeClauseStructure` | 508-542 | O(s×m) | 절 구조 분석 |
+| `countPassiveConstructions` | 547-565 | O(a) | 수동태 카운트 |
+| `detectComplexNominals` | 611-683 | O(p×n) | Lu CN/C 계산 |
+| `calculateTUnitMetrics` | 694-750 | O(n×w) | T-unit 메트릭 |
+| `calculateLuMetrics` | 758-779 | O(n×w) | Lu 전체 메트릭 |
+| `estimateCEFRLevel` | 788-797 | O(1) | CEFR 추정 |
+| `calculateComplexityScore` | 802-834 | O(1) | 복잡도 점수 |
+| `toSyntacticVector` | 933-960 | O(w) | 벡터 생성 |
+| `detectGenre` | 1021-1043 | O(g×s) | 장르 탐지 |
+| `analyzeGenreCompliance` | 1048-1079 | O(s) | 장르 준수도 |
+| `getSimplificationSuggestions` | 853-882 | O(1) | 단순화 제안 |
+| `isSuitableForStage` | 1186-1202 | O(w) | 단계 적합성 |
+
+---
+
+## 의존 관계
+
+```
+syntactic.ts (독립적, 외부 의존성 없음)
+  │
+  ├──> component-vectors.ts
+  │      SYNTVector 계산에 활용
+  │      - complexityScore → SYNTVector.complexityScore
+  │      - subordinationIndex → SYNTVector.dependentClausesPerClause
+  │      - dependencyDepth → SYNTVector.embeddingDepth
+  │
+  ├──> bottleneck.ts
+  │      SYNT 컴포넌트 오류 패턴 분석
+  │
+  ├──> priority.ts
+  │      Syntactic Cost 계산
+  │
+  └──> Services:
+       ├── task-generation.service (통사 과제 생성)
+       ├── content-selection (CEFR 필터링)
+       └── simplification (단순화 제안)
+```
+
+---
+
+## 학술적 기반
+
+- Lu, X. (2010). *Automatic analysis of syntactic complexity in second language writing*. International Journal of Corpus Linguistics
+- Lu, X. (2011). *A corpus-based evaluation of syntactic complexity measures as indices of college-level ESL writers' language development*. TESOL Quarterly
+- Hunt, K.W. (1965). *Grammatical structures written at three grade levels*. NCTE Research Report
+- Ortega, L. (2003). *Syntactic complexity measures and their relationship to L2 proficiency*. Applied Linguistics
+- Council of Europe (2001). *Common European Framework of Reference for Languages*. Cambridge University Press

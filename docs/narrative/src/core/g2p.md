@@ -1,250 +1,464 @@
-# Grapheme-to-Phoneme (G2P) Analysis Module
+# Grapheme-to-Phoneme (G2P) 분석 모듈
 
-> **Last Updated**: 2026-01-04
-> **Code Location**: `src/core/g2p.ts`
-> **Status**: Active
-
----
-
-## Context & Purpose
-
-This module exists to solve a fundamental challenge in language learning: English spelling is notoriously inconsistent with pronunciation. Words like "through," "though," "tough," and "thought" all contain "ough" but pronounce it differently. For language learners, this creates significant confusion and pronunciation errors.
-
-The G2P module analyzes the relationship between how words are spelled (graphemes) and how they're pronounced (phonemes), enabling LOGOS to:
-
-1. **Predict pronunciation difficulty** before presenting words to learners
-2. **Anticipate specific errors** based on a learner's native language
-3. **Measure learning transfer** when spelling patterns are mastered
-
-**Business Need**: Language learners waste time and develop fossilized pronunciation errors when they're given words with unpredictable spelling-pronunciation relationships without proper support. By analyzing G2P patterns, LOGOS can scaffold pronunciation instruction, present words in optimal order, and provide targeted feedback.
-
-**When Used**:
-- During vocabulary task generation to estimate word difficulty
-- When computing LanguageObjectVector phonological and orthographic dimensions
-- When predicting what errors a specific learner might make
-- When measuring whether mastering one spelling pattern helps with learning similar patterns
+> **Code**: `src/core/g2p.ts`
+> **Tier**: 1 (Core Algorithm)
 
 ---
 
-## Microscale: Direct Relationships
+## 핵심 수식
 
-### Dependencies (What This Needs)
+### G2P Entropy
 
-This module is intentionally self-contained with no external dependencies. It implements:
-- Pure TypeScript for all analysis
-- Regex-based pattern matching for G2P rules
-- Heuristic algorithms for syllable counting and stress estimation
-
-**Design Rationale**: By avoiding external phoneme dictionaries (like CMU Pronouncing Dictionary), the module remains lightweight and works offline. The trade-off is reduced accuracy for irregular words, which is acceptable for difficulty estimation purposes.
-
-### Dependents (What Needs This)
-
-- **`src/core/component-vectors.ts`**: `PHONVector` 타입은 이 모듈의 분석 결과를 구조화합니다:
-  - `analyzeG2PDifficulty()` → `graphemePhonemeRegularity`, `g2pEntropy`
-  - `analyzeG2PWithL1()` → `l1TransferDifficulty`, `predictedMispronunciations`
-  - `countSyllables()` → `hierarchicalLevel` 결정에 활용
-
-  > 참조: [component-vectors.md](component-vectors.md) - PHONVector 구조 및 Cost Modifier 계산
-
-- `src/core/languageObjectVector.ts`: Calls `toPhonologicalVector()` and `toOrthographicVector()` to populate the phonological and orthographic dimensions of vocabulary items
-- `src/scheduling/taskCalibration.ts`: Uses `analyzeG2PDifficulty()` to estimate pronunciation task difficulty for the Scheduler
-- `src/learning/pronunciationTraining.ts`: Uses `predictMispronunciations()` to generate L1-specific pronunciation feedback
-- `src/analytics/transferEffects.ts`: Uses `findG2PTransferCandidates()` and `measureG2PTransfer()` to track how G2P training affects vocabulary acquisition
-
-### Data Flow
+단어의 발음 불확실성을 정량화:
 
 ```
-Word input
-    |
-    v
-analyzeG2PDifficulty() --> checks against ENGLISH_G2P_RULES
-    |                           |
-    |                           v
-    |                   identifies exception words
-    |                   detects silent letters
-    |                   finds vowel digraphs
-    |                   counts consonant clusters
-    |
-    v
-G2PDifficulty result
-    |
-    +--> difficultyScore (0-1) --> Task Calibration
-    +--> irregularPatterns --> Diagnostic UI
-    +--> syllableCount --> Phonological Vector
-    |
-    v
-If L1 provided: analyzeG2PWithL1()
-    |
-    v
-L1Mispronunciation predictions --> Pronunciation Feedback
+H(w) = -Σᵢ P(phoneme|grapheme,context) × log₂(P)
+
+정규화: H_norm = min(1, H(w) / 2)
+```
+
+**해석**:
+- H = 0: 완벽히 예측 가능 (cat, stop)
+- H ≈ 0.5: 중간 불확실성 (read, lead)
+- H ≈ 1: 높은 불확실성 (through, cough)
+
+### Phonological Difficulty Score (P Score)
+
+```
+P(w) = α × H(w) + β × D(w) + γ × S(w)
+
+α = 0.4  (entropy weight)
+β = 0.4  (pattern difficulty weight)
+γ = 0.2  (syllable complexity weight)
+
+S(w) = min(1, (syllableCount - 1) / 5)
 ```
 
 ---
 
-## Macroscale: System Integration
+## 계층적 G2P 모델
 
-### Architectural Layer
-
-This module sits in the **Core Analysis Layer** of LOGOS architecture:
+Ehri (2005), Treiman (1993), Ziegler & Goswami (2005) 기반:
 
 ```
-Layer 1: User Interface (pronunciation exercises, feedback displays)
-    |
-Layer 2: Learning Engine (task selection, feedback generation)
-    |
-Layer 3: Core Analysis <-- G2P MODULE LIVES HERE
-    |       - Analyzes linguistic properties of vocabulary items
-    |       - Computes difficulty metrics
-    |       - Generates vectors for knowledge representation
-    |
-Layer 4: Data Layer (vocabulary databases, learner profiles)
+┌─────────────────────────────────────────┐
+│            Word Layer                    │
+│  (전체 단어 표상, 형태음소 패턴)          │
+├─────────────────────────────────────────┤
+│           Syllable Layer                 │
+│   onset-rime 구조, 6가지 음절 유형        │
+├─────────────────────────────────────────┤
+│          Alphabetic Layer                │
+│    개별 grapheme-phoneme 대응 규칙       │
+└─────────────────────────────────────────┘
 ```
 
-### Big Picture Impact
+### 음절 유형 (SyllableType)
 
-The G2P module enables three major LOGOS capabilities:
-
-**1. Intelligent Task Sequencing**
-Without G2P analysis, LOGOS would present words in arbitrary order. With it, the system can sequence words from regular (predictable spelling) to irregular, ensuring learners build pattern recognition before encountering exceptions.
-
-**2. Personalized Error Prediction**
-A Spanish speaker learning English will make different pronunciation errors than a Mandarin speaker. The L1 interference database allows LOGOS to anticipate errors before they happen and provide preemptive instruction.
-
-**3. Transfer Effect Measurement**
-When a learner masters the "-tion" suffix pattern (nation, station, operation), do they learn new "-tion" words faster? The transfer effect functions measure this, enabling LOGOS to optimize which patterns to explicitly teach versus let learners discover naturally.
-
-### Critical Path Analysis
-
-**Importance Level**: High (Pronunciation Domain)
-
-- **If this fails**: Pronunciation task difficulty estimation falls back to simple heuristics (word length, frequency). L1-specific feedback becomes unavailable. Transfer effect tracking is disabled.
-
-- **Graceful degradation**: The module returns sensible defaults when patterns are not found. An unknown word still gets a syllable count and basic analysis.
-
-- **No single point of failure**: Other LOGOS components can function without G2P analysis, but pronunciation-related features degrade significantly.
+| 유형 | 패턴 | 예시 | 모음 발음 |
+|------|------|------|-----------|
+| closed | CVC | cat, stop | 단모음 |
+| open | CV | go, me | 장모음 |
+| silent-e | CVCe | make, time | 장모음 |
+| vowel-team | CVVC | rain, feet | 팀 규칙 |
+| r-controlled | CVr | car, bird | r-색채 |
+| consonant-le | Cle | table, apple | /əl/ |
 
 ---
 
-## Technical Concepts (Plain English)
+## G2P 규칙 데이터베이스
 
-### Grapheme-to-Phoneme Correspondence (G2P)
-**Technical**: The systematic mapping between written letter sequences (graphemes) and their spoken sound representations (phonemes), including rules, contexts, and exceptions.
+### 규칙 구조 (lines 25-43)
 
-**Plain English**: The rules that tell you how to pronounce a word based on how it's spelled. In Spanish, these rules are almost perfect - "a" always sounds like "ah." In English, these rules are full of exceptions - "ough" can sound like "oo" (through), "oh" (though), "uff" (tough), or "aw" (thought).
+```typescript
+interface G2PRule {
+  pattern: RegExp;        // grapheme 패턴
+  phoneme: string;        // IPA 음소
+  context: G2PContext;    // 'initial' | 'medial' | 'final' | 'any'
+  exceptions: string[];   // 예외 단어 목록
+  reliability: number;    // 신뢰도 (0-1)
+  domains?: string[];     // 도메인 (medical 등)
+}
+```
 
-**Why We Use It**: By cataloging these rules and their exceptions, we can predict which words will be hard to pronounce and why.
+### 주요 규칙 신뢰도
 
-### L1 Interference (Negative Transfer)
-**Technical**: Phonological patterns from a learner's native language (L1) that interfere with target language (L2) pronunciation, causing systematic error patterns predictable from contrastive analysis.
+| 패턴 | 음소 | 신뢰도 | 예외 수 |
+|------|------|--------|---------|
+| ee | /iː/ | 0.95 | 0 |
+| ph | /f/ | 0.99 | 0 |
+| ^kn | /n/ | 0.99 | 0 |
+| ea | /iː/ | 0.70 | 16 (bread, head...) |
+| ou | /aʊ/ | 0.50 | 15 (you, soul, cough...) |
+| oo | /uː/ | 0.75 | 12 (book, blood...) |
+| ch | /tʃ/ | 0.75 | 16 (school, chef...) |
 
-**Plain English**: When your native language "gets in the way" of pronouncing a new language. Spanish doesn't have words starting with "sp-" so Spanish speakers instinctively add an "e" sound before it, saying "eh-spanish" instead of "spanish." It's not random - it's predictable based on what sounds exist in your first language.
+### 의료 도메인 규칙 (lines 519-552)
 
-**Why We Use It**: If we know a learner's native language, we can predict exactly which English sounds will be difficult and provide targeted practice.
-
-### Phonological Vector
-**Technical**: A multi-dimensional representation of a word's sound properties including phoneme sequence, syllable structure, stress pattern, and syllable count, used as input features for machine learning models.
-
-**Plain English**: A numerical "fingerprint" of how a word sounds, capturing things like: How many syllables? Which syllable is stressed? What's the pattern of consonants and vowels? This fingerprint lets the computer compare how similar two words sound, even though computers don't actually "hear" anything.
-
-**Why We Use It**: The LanguageObjectVector needs phonological information to represent vocabulary items completely. This vector provides that dimension.
-
-### Transfer Effect (Positive Transfer)
-**Technical**: The measurable improvement in acquisition rate for new items that share structural patterns with previously mastered items, calculated as the difference in learning curves before and after explicit pattern instruction.
-
-**Plain English**: When learning one thing makes learning similar things easier. If you master the "-tion" ending in "nation," you'll learn "station," "vacation," and "education" faster because your brain has already figured out that pattern. We measure this by comparing how fast you learned before and after.
-
-**Why We Use It**: By measuring transfer, LOGOS can identify high-value patterns worth teaching explicitly versus patterns learners pick up naturally.
-
-### Silent Letters
-**Technical**: Graphemes that appear in a word's orthographic representation but have no corresponding phoneme in the pronunciation, often historical remnants from earlier pronunciations or borrowed spellings.
-
-**Plain English**: Letters you write but don't say. The "k" in "knife," the "b" in "climb," the "gh" in "night." They're usually leftovers from when English did pronounce those letters centuries ago, but pronunciation changed while spelling stayed the same.
-
-**Why We Use It**: Silent letters are a major source of pronunciation difficulty. Detecting them helps us warn learners and provide special instruction.
-
-### Vowel Digraph
-**Technical**: A sequence of two vowel graphemes that represent a single phoneme or diphthong, often with variable pronunciation depending on word origin and context.
-
-**Plain English**: Two vowels that team up to make one sound. "EA" in "beat" makes a long "ee" sound. But "EA" in "bread" makes a short "eh" sound. These combinations are tricky because they're not always consistent.
-
-**Why We Use It**: Vowel combinations are unpredictable in English and contribute significantly to G2P difficulty scores.
+```typescript
+// 그리스어 기원 접두사
+{ pattern: /^psych/, phoneme: '/saɪk/', reliability: 0.99 }  // psychology
+{ pattern: /^pneu/,  phoneme: '/njuː/', reliability: 0.99 }  // pneumonia
+{ pattern: /^rhe/,   phoneme: '/riː/',  reliability: 0.95 }  // rheumatoid
+{ pattern: /rrh/,    phoneme: '/r/',    reliability: 0.99 }  // hemorrhage
+```
 
 ---
 
-## Key Data Structures
+## L1 간섭 패턴
 
-### ENGLISH_G2P_RULES Database
+### 지원 언어별 간섭 (lines 558-619)
 
-The module contains 40+ G2P rules organized by category:
+**Spanish**:
+```
+sp- → /esp-/  (Spanish adds /e/ before s+consonant)
+v   → /b/     (Spanish v/b merge)
+th  → /t, d/  (lacks dental fricatives)
+```
 
-| Category | Example Pattern | Phoneme | Reliability | Notes |
-|----------|-----------------|---------|-------------|-------|
-| Magic E | `a[^aeiou]e$` | /ei/ | 85% | "make" but not "have" |
-| Vowel Digraph | `ee` | /i:/ | 95% | Highly reliable |
-| Vowel Digraph | `ea` | /i:/ | 70% | Many exceptions |
-| R-controlled | `ar` | /a:r/ | 85% | "car" but not "war" |
-| Silent Consonant | `^kn` | /n/ | 99% | Always silent k |
-| Consonant Digraph | `ph` | /f/ | 99% | From Greek |
-| Soft C | `c[eiy]` | /s/ | 95% | "city," "cent" |
-| Suffix | `-tion` | /shun/ | 95% | Very reliable |
-| Medical | `^psych` | /saik/ | 99% | Domain-specific |
+**Japanese**:
+```
+r ↔ l        (merger - bidirectional confusion)
+v   → /b/    (lacks /v/)
+f   → /h/    (Japanese f is bilabial)
+consonant clusters → vowel insertion
+```
 
-**Reliability Score**: Indicates how consistently the rule applies. Low reliability (like "ou" at 50%) means many exceptions exist.
+**Mandarin**:
+```
+th  → /s, z/  (lacks dental fricatives)
+v   → /w/     (lacks /v/)
+final consonants → deletion
+```
 
-### L1_INTERFERENCE_PATTERNS Database
-
-Supports six native language backgrounds:
-
-| L1 | Key Interference Patterns | General Patterns |
-|----|---------------------------|------------------|
-| Spanish | /esp-/ for sp-, /b/ for v, lacks /th/ | Vowel reduction difficulty |
-| Portuguese | /t/ or /f/ for th, silent h | Nasalization transfer |
-| Mandarin | Approximant r, /w/ for v, lacks /th/ | Final consonant deletion |
-| Japanese | r/l merger, /b/ for v, /h/ for f | Vowel insertion in clusters |
-| Korean | /p/ for f, /b/ for v, r/l allophony | Final consonant unreleased |
-| Arabic | /b/ for p, /f/ for v | Vowel cluster avoidance |
-
----
-
-## Algorithm Details
-
-### Difficulty Score Calculation
-
-The `analyzeG2PDifficulty()` function computes a 0-1 difficulty score by accumulating contributions:
-
-| Factor | Contribution | Rationale |
-|--------|--------------|-----------|
-| Exception word match | +0.20 | Word breaks a common rule |
-| Silent letters present | +0.15 | Unpredictable pronunciation |
-| Each vowel combination | +0.10 | Variable pronunciation |
-| Each 3+ consonant cluster | +0.15 | Articulatory difficulty |
-| Syllables beyond 3 | +0.05/syllable | Length complexity |
-| Irregular stress | +0.10 | Unpredictable emphasis |
-
-The score is capped at 1.0 maximum.
-
-### Syllable Counting Heuristic
-
-The `countSyllables()` function uses a vowel-counting approach with adjustments:
-
-1. Count vowel groups (`[aeiouy]+`)
-2. Subtract 1 for silent final "e" (if preceded by consonant)
-3. Add 1 for syllabic "-le" endings (like "ble," "tle")
-4. Add 1 for syllabic "-ed" endings (after "t" or "d")
-5. Ensure minimum of 1 syllable
-
-**Accuracy**: This heuristic achieves approximately 85% accuracy on common English vocabulary. Edge cases like "fire" (1 or 2 syllables depending on accent) are handled by defaulting to simpler counts.
+**Korean**:
+```
+f   → /p/     (lacks /f/)
+r ↔ l        (allophonic variation)
+final consonants → unreleased
+```
 
 ---
 
-## Change History
+## Grapheme 분절 알고리즘
 
-### 2026-01-04 - Initial Documentation
-- **What Changed**: Created narrative documentation for G2P module
-- **Why**: Enable team understanding of pronunciation analysis system
-- **Impact**: Improves maintainability and onboarding
+### segmentGraphemes() (lines 726-794)
 
-### Module Creation - Core Implementation
-- **What Changed**: Implemented complete G2P analysis with rule database, L1 interference patterns, and vector generation
-- **Why**: LOGOS needed pronunciation difficulty estimation for task calibration and personalized error prediction
-- **Impact**: Enables phonological dimension of LanguageObjectVector and L1-specific pronunciation training
+```typescript
+// 분절 우선순위: trigraph > digraph > silent > single
+while (i < word.length) {
+  // 1. Trigraph 체크 (igh, tch, dge...)
+  if (ENGLISH_TRIGRAPHS.includes(word.slice(i, i+3))) {
+    // trigraph unit 추가
+    i += 3;
+    continue;
+  }
+
+  // 2. Digraph 체크 (sh, ch, th, ee, ai...)
+  if (ENGLISH_DIGRAPHS.includes(word.slice(i, i+2))) {
+    // digraph unit 추가
+    i += 2;
+    continue;
+  }
+
+  // 3. Silent letter 체크
+  if (isSilentLetter(word, i)) {
+    // silent unit 추가 (phoneme = '')
+    i++;
+    continue;
+  }
+
+  // 4. Single grapheme
+  // single unit 추가
+  i++;
+}
+```
+
+### Digraph/Trigraph 목록
+
+**Digraphs** (29개):
+```
+자음: ch, sh, th, wh, ph, gh, ck, ng, qu
+모음: ee, ea, oo, ai, ay, oa, ou, ow, oi, oy, au, aw
+R-통제: ar, er, ir, or, ur
+기타: ey, ie, ei, ue, ew
+```
+
+**Trigraphs** (10개):
+```
+igh, tch, dge, air, ear, ure, ore, are, eer, oor
+```
+
+---
+
+## Entropy 계산 알고리즘
+
+### computeG2PEntropy() (lines 1033-1062)
+
+```typescript
+function computeG2PEntropy(word: string): number {
+  const graphemes = segmentGraphemes(word);
+  let totalEntropy = 0;
+
+  for (const unit of graphemes) {
+    const possiblePhonemes = getPossiblePhonemes(unit.grapheme);
+    const n = possiblePhonemes.length;
+
+    if (n <= 1) continue;  // 모호성 없음
+
+    const reliability = getGraphemeReliability(unit.grapheme);
+
+    // H = log₂(n) × (1 - reliability)
+    // 가능성이 많고 신뢰도가 낮을수록 entropy 증가
+    totalEntropy += Math.log2(n) * (1 - reliability);
+  }
+
+  // 정규화: grapheme당 평균, 0-1 범위
+  return Math.min(1, (totalEntropy / graphemes.length) / 2);
+}
+```
+
+### 모호한 Grapheme 음소 (lines 1067-1091)
+
+```typescript
+const ambiguousGraphemes = {
+  'a':  ['/æ/', '/eɪ/', '/ɑː/', '/ə/'],      // 4개
+  'ou': ['/aʊ/', '/uː/', '/ʌ/', '/oʊ/', '/ə/'], // 5개
+  'ea': ['/iː/', '/ɛ/', '/eɪ/'],              // 3개
+  'ch': ['/tʃ/', '/k/', '/ʃ/'],               // 3개
+  'gh': ['', '/f/', '/g/'],                   // 3개 (silent 포함)
+  //...
+};
+```
+
+---
+
+## 난이도 분석 알고리즘
+
+### analyzeG2PDifficulty() (lines 1163-1248)
+
+```typescript
+function analyzeG2PDifficulty(word: string): G2PDifficulty {
+  let difficultyScore = 0;
+  const irregularPatterns: IrregularPattern[] = [];
+
+  // 1. 예외 단어 체크 (+0.2)
+  for (const rule of ENGLISH_G2P_RULES) {
+    if (rule.exceptions.includes(word)) {
+      difficultyScore += 0.2;
+      irregularPatterns.push({...});
+    }
+  }
+
+  // 2. Silent letters (+0.15)
+  if (checkSilentLetters(word)) {
+    difficultyScore += 0.15;
+  }
+
+  // 3. 모음 조합 (각 +0.1)
+  const vowelDigraphs = word.match(/[aeiou]{2,}/g) || [];
+  difficultyScore += vowelDigraphs.length * 0.1;
+
+  // 4. 자음 군집 3개 이상 (각 +0.15)
+  const clusters = word.match(/[bcdfghjklmnpqrstvwxyz]{3,}/gi) || [];
+  difficultyScore += clusters.length * 0.15;
+
+  // 5. 음절 수 (3개 초과시 개당 +0.05)
+  const syllables = countSyllables(word);
+  if (syllables > 3) {
+    difficultyScore += (syllables - 3) * 0.05;
+  }
+
+  // 6. 비정규 강세 (+0.1)
+  if (checkIrregularStress(word)) {
+    difficultyScore += 0.1;
+  }
+
+  return {
+    word,
+    irregularPatterns,
+    difficultyScore: Math.min(1, difficultyScore),
+    syllableCount: syllables,
+    hasSilentLetters: ...,
+    hasIrregularStress: ...,
+    potentialMispronunciations: []
+  };
+}
+```
+
+---
+
+## 음절 수 계산
+
+### countSyllables() (lines 1277-1308)
+
+```typescript
+function countSyllables(word: string): number {
+  // 1. 모음 그룹 수 계산
+  let count = (word.match(/[aeiouy]+/g) || []).length;
+
+  // 2. Silent-e 보정 (-1)
+  if (word.endsWith('e') && !'aeiou'.includes(word.charAt(-2))) {
+    count = Math.max(1, count - 1);
+  }
+
+  // 3. Syllabic -le 보정 (+1)
+  if (word.endsWith('le') && !'aeiou'.includes(word.charAt(-3))) {
+    count++;  // table, apple
+  }
+
+  // 4. Syllabic -ed 보정 (+1)
+  if (word.endsWith('ed') && 'dt'.includes(word.charAt(-3))) {
+    count++;  // wanted, needed
+  }
+
+  return Math.max(1, count);
+}
+```
+
+**정확도**: 일반 영어 어휘 ~85%. 방언 차이 (fire: 1 vs 2음절)는 단순 버전 사용.
+
+---
+
+## 계층적 프로필 시스템
+
+### G2PHierarchicalProfile (lines 1758-1794)
+
+```typescript
+interface G2PHierarchicalProfile {
+  alphabetic: {
+    units: Map<string, AlphabeticUnit>;  // 학습된 grapheme-phoneme 매핑
+    mastery: number;                      // 전체 mastery (0-1)
+    difficulties: string[];               // 문제 패턴
+  };
+
+  syllable: {
+    units: Map<string, SyllableUnit>;    // 학습된 음절 패턴
+    mastery: number;
+    difficulties: string[];
+  };
+
+  word: {
+    units: Map<string, WordUnit>;        // 전체 단어 표상
+    mastery: number;
+    sightWordCount: number;              // 시각 단어 수
+  };
+
+  l1: string;  // 모국어
+  l2: string;  // 목표어
+}
+```
+
+### assessHierarchicalReadiness() (lines 2109-2176)
+
+학습자가 특정 단어를 배울 준비가 되었는지 계층별 평가:
+
+```typescript
+function assessHierarchicalReadiness(profile, word) {
+  const hierarchy = parseWordHierarchy(word);
+
+  // Alphabetic layer: 모든 grapheme 알고 있는가?
+  let knownGraphemes = 0;
+  for (const unit of hierarchy.alphabetic) {
+    if (profile.alphabetic.units.get(unit.grapheme)?.acquisitionStage >= 2) {
+      knownGraphemes++;
+    }
+  }
+  const alphabeticReadiness = knownGraphemes / hierarchy.alphabetic.length;
+
+  // Syllable layer: 모든 음절 패턴 알고 있는가?
+  // ... (유사한 로직)
+
+  // 추천 수준 결정
+  if (alphabeticReadiness < 0.7) {
+    return { recommendedLevel: 'alphabetic', prerequisites: [...] };
+  } else if (syllableReadiness < 0.7) {
+    return { recommendedLevel: 'syllable', prerequisites: [...] };
+  } else {
+    return { recommendedLevel: 'word' };
+  }
+}
+```
+
+---
+
+## Transfer Effect 측정
+
+### findG2PTransferCandidates() (lines 1549-1580)
+
+학습한 패턴과 공유하는 단어 찾기:
+
+```typescript
+function findG2PTransferCandidates(trainedWords, candidateWords) {
+  // 학습된 단어에서 패턴 추출
+  const trainedPatterns = new Set<string>();
+  for (const word of trainedWords) {
+    const vector = toOrthographicVector(word);
+    vector.spellingPatterns.forEach(p => trainedPatterns.add(p));
+  }
+
+  // 후보 단어에서 공유 패턴 찾기
+  return candidateWords
+    .map(word => {
+      const shared = getSpellingPatterns(word)
+        .filter(p => trainedPatterns.has(p));
+
+      if (shared.length === 0) return null;
+
+      // 전이 잠재력 = 공유 패턴 수 × 0.25 + (1 - 난이도) × 0.3
+      const potential = shared.length * 0.25 +
+                       (1 - analyzeG2PDifficulty(word).difficultyScore) * 0.3;
+
+      return { word, sharedPatterns: shared, transferPotential: potential };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.transferPotential - a.transferPotential);
+}
+```
+
+---
+
+## 핵심 함수
+
+| 함수 | 라인 | 복잡도 | 용도 |
+|------|------|--------|------|
+| `segmentGraphemes` | 726-794 | O(n) | Grapheme 분절 |
+| `computeG2PEntropy` | 1033-1062 | O(n) | 발음 불확실성 |
+| `computePhonologicalDifficulty` | 1121-1139 | O(n) | P 스코어 계산 |
+| `analyzeG2PDifficulty` | 1163-1248 | O(n×r) | 난이도 분석 |
+| `analyzeG2PWithL1` | 1389-1402 | O(n×p) | L1 간섭 포함 분석 |
+| `countSyllables` | 1277-1308 | O(n) | 음절 수 |
+| `parseWordHierarchy` | 1802-1840 | O(n) | 계층적 분해 |
+| `assessHierarchicalReadiness` | 2109-2176 | O(n) | 학습 준비도 |
+| `findG2PTransferCandidates` | 1549-1580 | O(m×n) | 전이 후보 |
+
+---
+
+## 의존 관계
+
+```
+g2p.ts (독립적, 외부 의존성 없음)
+  │
+  ├──> component-vectors.ts
+  │      PHONVector 계산에 활용
+  │
+  ├──> g2p-irt.ts
+  │      G2P 규칙에 IRT 적용
+  │
+  ├──> priority.ts
+  │      Phonological Cost 계산
+  │
+  └──> Services:
+       ├── task-generation.service (발음 과제 생성)
+       ├── scoring-update.service (G2P mastery 추적)
+       └── pronunciation-training (L1 맞춤 피드백)
+```
+
+---
+
+## 학술적 기반
+
+- Ehri, L.C. (2005). *Learning to read words: Theory, findings, and issues*. Scientific Studies of Reading
+- Treiman, R. (1993). *Beginning to Spell*. Oxford University Press
+- Ziegler, J.C. & Goswami, U. (2005). *Reading acquisition, developmental dyslexia, and skilled reading across languages*. Psychological Bulletin
+- Kessler, B. & Treiman, R. (2001). *Relationships between sounds and letters in English monosyllables*. Journal of Memory and Language

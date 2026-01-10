@@ -1,241 +1,150 @@
 # Priority Calculation Module
 
-> **Last Updated**: 2026-01-06
-> **Code Location**: `src/core/priority.ts`
-> **Status**: Active
+> **Code**: `src/core/priority.ts`
+> **Tier**: 1 (Core Algorithm)
 
 ---
 
-## Why This Exists
-
-The Priority module answers the fundamental question of adaptive learning: **"What should the learner study next?"** Without principled prioritization, learners either waste time on material they already know or struggle with content far beyond their level. This module implements the FRE (Frequency, Relational density, contextual contribution) priority system, which balances what's most useful to learn (high frequency, high connectivity) against what's feasible to learn (accounting for difficulty, transfer from L1, and learner ability).
-
-The core insight is that priority is a ratio: **Value / Cost**. High-value items that are easy to learn get scheduled first; low-value items that are hard can wait.
-
----
-
-## Key Concepts
-
-- **FRE Metrics**: Three dimensions of vocabulary value:
-  - **F (Frequency)**: How often the word appears in target texts (coverage value)
-  - **R (Relational Density)**: How connected the word is to other vocabulary (hub words)
-  - **E (Contextual Contribution)**: How important the word is for understanding meaning
-
-- **Cost Factors**: What makes learning harder or easier:
-  - **Base Difficulty**: IRT-derived difficulty on logit scale
-  - **Transfer Gain**: Benefit from L1-L2 similarity (cognates, shared structures)
-  - **Exposure Need**: Gap between learner ability and item difficulty
-
-- **Urgency**: Spaced repetition integration - items become urgent as they approach or pass their review date
-
-- **Enhanced Priority**: Extended model incorporating:
-  - Pragmatic complexity (register, politeness)
-  - Morphological complexity (word forms, inflections)
-  - Phonological difficulty (pronunciation challenges)
-  - Domain relevance (medical English, business English)
-
----
-
-## Design Decisions
-
-### Priority = FRE / Cost
-
-The formula `Priority = (w_F * F + w_R * R + w_E * E) / Cost` elegantly balances value against effort. High-frequency words with many connections that are relatively easy to learn (due to L1 transfer or matching the learner's level) rise to the top. This prevents the system from either drilling only easy words (low learning gain) or only hard words (frustration and inefficiency).
-
-### Adaptive Weight Adjustment by Level
-
-Beginners get `{f: 0.5, r: 0.25, e: 0.25}` - heavily weighted toward frequency because vocabulary coverage is the bottleneck. Advanced learners get `{f: 0.3, r: 0.3, e: 0.4}` - more weight on contextual nuance because they already have core vocabulary.
-
-### Urgency Multiplication, Not Addition
-
-Final score is `Priority * (1 + Urgency)` rather than `Priority + Urgency`. This ensures that a high-priority item that's overdue dominates, but a low-priority item that's slightly overdue doesn't jump ahead of high-priority new items. The multiplicative relationship preserves relative priorities while boosting overdue items.
-
-### Domain Boost as Multiplier
-
-When a user focuses on a domain (e.g., medical English), items with high domain relevance get up to 50% priority boost. This is a multiplier, not an override, so domain-relevant items still compete on merit rather than being arbitrarily promoted.
-
-### Transfer Gain as Cost Reduction
-
-L1-L2 transfer (cognates, similar grammar) reduces learning cost rather than increasing priority directly. This reflects the reality that similar items are *easier* to learn, not inherently more *valuable*. A Korean cognate with English might be easy to learn, but that doesn't make it more important than a high-frequency non-cognate.
-
----
-
-## Integration Points
-
-### Dependencies (What This Needs)
-
-- **`./pragmatics`**: `calculatePragmaticDifficulty()`, `PragmaticProfile` - for pragmatic complexity scoring
-- **`./transfer`**: `calculateTransferGain()`, `getTransferCoefficients()` - for L1-L2 transfer benefit calculation
-
-### Related: Component-Specific Priority System
-
-> **중요**: 이 모듈은 기존 LEX 중심의 FRE 우선순위를 제공합니다. 모든 5개 컴포넌트(PHON, MORPH, LEX, SYNT, PRAG)에 대한 **컴포넌트별 우선순위 계산**은 [component-vectors.ts](component-vectors.md)의 `computeComponentPriority()` 함수를 참조하세요.
-
-**기존 시스템 vs 컴포넌트별 시스템**:
-
-| 측면 | 이 모듈 (`priority.ts`) | `component-vectors.ts` |
-|------|------------------------|------------------------|
-| 대상 | 주로 LEX (어휘) 객체 | 모든 5개 컴포넌트 |
-| Cost 계산 | 일반적인 난이도 기반 | 컴포넌트별 Cost Modifier (0.5-2.0) |
-| 사용 사례 | 기존 어휘 학습 큐 | 컴포넌트별 적응 학습 |
-
-### Dependents (What Needs This)
-
-- **`src/core/component-vectors.ts`**: `computeComponentPriority()`에서 FRE 계산 로직을 활용하며, 컴포넌트별 Cost Modifier를 추가합니다. [component-vectors.md](component-vectors.md) 참조
-- **`src/main/services/state-priority.service.ts`**: Builds learning queues using `buildLearningQueue()` and `buildEnhancedLearningQueue()`
-- **`src/main/services/session.service.ts`**: Uses `getSessionItems()` to construct practice sessions
-- **`src/core/index.ts`**: Re-exports all priority functions for convenient importing
-
-### Data Flow
+## 핵심 공식
 
 ```
-User State (theta, weights, L1)
-         |
-         v
-Language Objects (with FRE metrics, IRT difficulty)
-         |
-         +---> computeFRE() --> Weighted value score
-         |
-         +---> estimateCostFactors() --> Base difficulty, transfer, exposure need
-         |          |
-         |          +---> computeCost() --> Cost denominator
-         |
-         +---> computePriority() --> FRE / Cost
-                   |
-                   v
-Mastery Map (next review dates, stages)
-         |
-         +---> computeUrgency() --> Overdue multiplier
-         |
-         +---> computeFinalScore() --> Priority * (1 + Urgency)
-                   |
-                   v
-buildLearningQueue() --> Sorted QueueItem[] (highest first)
-         |
-         v
-getSessionItems() --> Balanced session with due + new items
+            w_F × F + w_R × R + w_E × E
+Priority = ─────────────────────────────────
+           BaseDifficulty - TransferGain + ExposureNeed
 ```
 
----
-
-## Key Functions
-
-| Function | Purpose |
-|----------|---------|
-| `computeFRE(metrics, weights)` | Weighted sum of F, R, E values |
-| `computeCost(factors)` | Base - Transfer + Exposure need |
-| `computePriority(object, userState)` | Full priority calculation (FRE / Cost) |
-| `computeUrgency(nextReview, now)` | Spaced repetition urgency (0 to 3) |
-| `buildLearningQueue(objects, userState, masteryMap, now)` | Full queue sorted by final score |
-| `getSessionItems(queue, size, newRatio)` | Balanced session extraction |
-| `computeEnhancedPriority(object, userState, config)` | Full priority with pragmatics & complexity |
+**높은 Value + 낮은 Cost = 높은 Priority = 먼저 학습**
 
 ---
 
-## Technical Concepts (Plain English)
+## 수학적 기초
 
-### FRE (Frequency, Relational, contextual contribution)
-
-**Technical**: A weighted linear combination of three normalized vocabulary metrics: corpus frequency, network centrality (via PMI-derived connections), and contextual importance (via TF-IDF or similar).
-
-**Plain English**: FRE answers "How useful is this word?" Frequency tells us how often it appears (common words are more useful). Relational density tells us how connected it is (hub words unlock understanding of related words). Contextual contribution tells us how much meaning it carries (content words matter more than function words for comprehension).
-
-### Transfer Gain
-
-**Technical**: A coefficient derived from L1-L2 linguistic distance for specific features (phonological, morphological, lexical), representing the learning cost reduction from native language knowledge.
-
-**Plain English**: If you speak Spanish and you're learning English, "hospital" is almost free to learn (it's nearly identical). If you speak Korean, it's much harder (no cognate). Transfer gain captures how much your native language helps with each specific item.
-
-### Urgency
-
-**Technical**: A time-based multiplier that increases as items approach or exceed their scheduled review date, following spaced repetition principles.
-
-**Plain English**: Urgency is the "use it or lose it" factor. An item scheduled for review yesterday is urgent - if you don't practice it soon, you'll forget it and waste the previous learning. Items not yet due have zero urgency because there's no forgetting risk yet.
-
-### Queue Building
-
-**Technical**: An algorithm that sorts vocabulary items by final score (priority times urgency multiplier), then extracts a balanced session with a configurable ratio of due items to new items.
-
-**Plain English**: The queue is your optimized study list. It puts the most valuable, most urgent items at the top. But it also balances review (don't forget what you learned) with new learning (keep making progress). A typical session might be 70% review, 30% new items.
-
----
-
-## Usage Examples
-
-### Basic Priority Calculation
+### 1. FRE 점수
 
 ```typescript
-import { computePriority, DEFAULT_PRIORITY_WEIGHTS } from './priority';
-
-const word = {
-  id: 'medication-001',
-  content: 'medication',
-  type: 'lexical',
-  frequency: 0.8,           // High frequency in medical corpus
-  relationalDensity: 0.7,   // Strong collocations with many terms
-  contextualContribution: 0.6, // Important for meaning
-  irtDifficulty: 0.5,       // Moderate difficulty
-};
-
-const userState = {
-  theta: 0.3,               // Slightly above average ability
-  weights: DEFAULT_PRIORITY_WEIGHTS,
-  l1Language: 'ko',         // Korean speaker
-};
-
-const priority = computePriority(word, userState);
-// Returns ~2.1 (high priority - valuable and learnable)
+FRE = w_F × F + w_R × R + w_E × E   // 가중치 합 = 1
 ```
 
-### Building a Learning Queue
+| 변수 | 의미 | 측정 | 범위 |
+|------|------|------|------|
+| **F** | 코퍼스 빈도 | Zipf's law 정규화 | 0-1 |
+| **R** | 네트워크 중심성 | PMI 기반 연결 | 0-1 |
+| **E** | 의미 기여도 | TF-IDF 유사 | 0-1 |
+
+**수준별 가중치**:
+```typescript
+beginner:     { f: 0.5, r: 0.25, e: 0.25 }  // 빈도 우선 - 커버리지 확보
+intermediate: { f: 0.4, r: 0.3,  e: 0.3  }  // 균형
+advanced:     { f: 0.3, r: 0.3,  e: 0.4  }  // 맥락 우선 - 뉘앙스 학습
+```
+
+**이론적 근거**:
+- Nation (2001): 고빈도 2000단어 = 일반 텍스트 80% 커버
+- 초급은 커버리지, 고급은 뉘앙스가 병목
+
+### 2. Cost 계산
 
 ```typescript
-import { buildLearningQueue, getSessionItems } from './priority';
-
-const queue = buildLearningQueue(
-  allVocabulary,
-  userState,
-  masteryMap,
-  new Date()
-);
-
-// Get 20 items for a session (70% due, 30% new)
-const sessionItems = getSessionItems(queue, 20, 0.3);
+Cost = max(0.1, BaseDifficulty - TransferGain + ExposureNeed)
 ```
 
-### Enhanced Priority with Pragmatics
+| 요소 | 계산 | 의미 |
+|------|------|------|
+| **BaseDifficulty** | `(irtDifficulty + 3) / 6` | IRT 난이도 정규화 |
+| **TransferGain** | `calculateTransferGain(L1, L2, type)` | L1 전이 이득 |
+| **ExposureNeed** | `min(1, (difficulty - θ) / 3)` | 능력 격차 |
+
+### 3. Urgency (긴급성)
 
 ```typescript
-import { computeEnhancedPriority, DEFAULT_ENHANCED_CONFIG } from './priority';
+function computeUrgency(nextReview, now) {
+  if (!nextReview) return 1.5;  // 신규 항목
 
-const config = {
-  ...DEFAULT_ENHANCED_CONFIG,
-  focusDomain: 'medical',
-  pragmaticPenalty: true,
-};
-
-const result = computeEnhancedPriority(extendedWord, userState, config);
-// result.priority: final score
-// result.breakdown: detailed cost breakdown
+  const daysOverdue = (now - nextReview) / MS_PER_DAY;
+  if (daysOverdue < 0) return 0;
+  return Math.min(3, 1 + daysOverdue * 0.5);
+}
 ```
+
+```
+Urgency
+   3 |                    ******
+   2 |          **********
+   1 |**********
+   0 |______|___________________
+        Due  +2  +4  days overdue
+```
+
+### 4. Final Score
+
+```typescript
+FinalScore = Priority × (1 + Urgency)
+```
+
+**곱셈 이유**: 덧셈이면 낮은 Priority + 높은 Urgency가 상위로 감. 곱셈은 Priority 순위 유지하면서 Urgency가 부스트만 제공.
 
 ---
 
-## Change History
+## 핵심 함수
 
-### 2026-01-06 - Documentation Created
-
-- **What Changed**: Created shadow documentation for priority.ts
-- **Why**: Core algorithm requires narrative explanation for system understanding
-- **Impact**: Enables developers and AI agents to understand prioritization logic
-
-### Historical Implementation Notes
-
-- FRE formula derived from vocabulary acquisition research
-- Transfer coefficients use real L1-L2 distance data
-- Urgency curve calibrated to match FSRS forgetting curves
-- Enhanced priority added pragmatics integration after initial release
+| 함수 | 라인 | 용도 |
+|------|------|------|
+| `computeFRE()` | 106-115 | 가치 점수 계산 |
+| `computeCost()` | 127-131 | 학습 비용 계산 |
+| `estimateCostFactors()` | 138-168 | IRT 난이도, 전이 이득, 노출 필요 추출 |
+| `computePriority()` | 181-196 | FRE / Cost |
+| `computeUrgency()` | 214-233 | 간격반복 긴급성 |
+| `buildLearningQueue()` | 289-312 | 전체 큐 정렬 |
+| `getSessionItems()` | 326-344 | 세션 항목 추출 (70% 복습 + 30% 신규) |
 
 ---
 
-*This documentation mirrors: `src/core/priority.ts`*
+## 의존 관계
+
+```
+transfer.ts ──> calculateTransferGain()
+
+priority.ts
+    │
+    ├──> component-vectors.ts  (FRE 로직 활용, Cost Modifier 추가)
+    ├──> state-priority.service.ts  (buildLearningQueue 호출)
+    └──> session.service.ts  (getSessionItems 호출)
+```
+
+**Component-Specific Priority**: 5개 컴포넌트별 고유 Cost Modifier가 필요한 경우 → [component-vectors.md](component-vectors.md)
+
+---
+
+## 설계 결정 근거
+
+### Transfer를 Cost에서 빼는 이유
+
+```typescript
+// ❌ 틀림: 동족어가 "더 가치 있는" 것처럼 됨
+Priority = FRE × (1 + Transfer)
+
+// ✓ 올바름: 동족어는 "더 쉬운" 것으로 취급 (가치는 동일)
+Cost = Difficulty - Transfer
+```
+
+### Urgency 상한(3) 이유
+
+상한 없으면 오래 방치된 항목이 무한히 높은 점수 획득 → 새 항목 영원히 도입 안됨
+
+### 왜 FRE인가?
+
+| 대안 | 문제점 |
+|------|--------|
+| 빈도만 | 기능어(the, a)가 항상 최상위 |
+| 난이도만 | 쉬운 것만 반복, 학습 정체 |
+| 무작위 | 비효율적 |
+
+FRE = 빈도(효율) + 연결성(전이) + 맥락(실용성) 균형
+
+---
+
+## 학술적 기반
+
+- Nation, I.S.P. (2001). *Learning Vocabulary in Another Language*
+- Pimsleur, P. (1967). A memory schedule. *Modern Language Journal*
+- Ringbom, H. (2007). *Cross-linguistic Similarity in FL Learning*
