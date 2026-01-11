@@ -5,14 +5,14 @@
 
 ---
 
-## 목적
+## Purpose
 
-개발 병목 감지와 에이전트 자동 활성화. Bottleneck Detection Protocol 구현.
+Development bottleneck detection and automatic agent activation. Implements the Bottleneck Detection Protocol.
 
-**핵심 기능**:
-- 맥락 기반 트리거 감지 (레이어, 파일 패턴)
-- 병목 등록 및 에이전트 매핑
-- Meta-Agent 생성 조건 판단
+**Key Features**:
+- Context-based trigger detection (layer, file patterns)
+- Bottleneck registration and agent mapping
+- Meta-Agent creation condition evaluation
 
 ---
 
@@ -64,7 +64,7 @@ BOTTLENECK_AGENT_MAP: Record<BottleneckType, AgentType[]> = {
 
 ---
 
-## AgentTriggerService 클래스
+## AgentTriggerService Class
 
 ### detectTriggers(context)
 
@@ -73,12 +73,12 @@ BOTTLENECK_AGENT_MAP: Record<BottleneckType, AgentType[]> = {
 detectTriggers(context: TriggerContext): AgentTrigger[]
 ```
 
-트리거 감지 순서:
-1. **레이어 기반**: 작업 중인 아키텍처 레이어
-2. **파일 패턴 기반**: 파일 경로 패턴 매칭
-3. **보안 민감도**: securitySensitive = true
-4. **외부 API**: externalApi = true
-5. **문서화 필요**: 코드 변경시 항상
+Trigger detection order:
+1. **Layer-based**: Current architecture layer being worked on
+2. **File pattern-based**: File path pattern matching
+3. **Security sensitivity**: securitySensitive = true
+4. **External API**: externalApi = true
+5. **Documentation required**: Always on code changes
 
 ### registerBottleneck(bottleneck)
 
@@ -87,20 +87,20 @@ detectTriggers(context: TriggerContext): AgentTrigger[]
 registerBottleneck(bottleneck: DevelopmentBottleneck): AgentTrigger[]
 ```
 
-병목 등록 후 적절한 에이전트 트리거 반환.
+Registers bottleneck and returns appropriate agent triggers.
 
-### Meta-Agent 생성 조건
+### Meta-Agent Creation Conditions
 
 ```typescript
 // lines 275-297
 shouldTriggerMetaAgent(bottleneck): boolean {
-  // 1. 명시적 요청
+  // 1. Explicit request
   if (bottleneck.type === 'missing_agent_specialization') return true;
 
-  // 2. 동일 병목 3회 이상 반복
+  // 2. Same bottleneck repeated 3+ times
   if (sameTypeCount >= 3) return true;
 
-  // 3. 매핑된 에이전트 없음
+  // 3. No mapped agents available
   if (!mappedAgents || mappedAgents.length === 0) return true;
 }
 ```
@@ -113,12 +113,12 @@ shouldTriggerMetaAgent(bottleneck): boolean {
 type Priority = 'immediate' | 'soon' | 'when_available';
 ```
 
-| Severity | Priority | 조건 |
-|----------|----------|------|
-| critical | immediate | 보안 문제, 빌드 실패 |
-| high | immediate | 블로킹 이슈 |
-| medium | soon | 기능 저하 |
-| low | when_available | 개선 사항 |
+| Severity | Priority | Condition |
+|----------|----------|-----------|
+| critical | immediate | Security issues, build failures |
+| high | immediate | Blocking issues |
+| medium | soon | Feature degradation |
+| low | when_available | Improvements |
 
 ---
 
@@ -139,16 +139,16 @@ generateAgentSpec(bottleneck): AgentCreationSpec {
 
 ---
 
-## 의존 관계
+## Dependencies
 
-```
+```text
 agent-trigger.service.ts
   │
-  ├──> DEVELOPMENT-PROTOCOL.md (에이전트 정의)
+  ├──> DEVELOPMENT-PROTOCOL.md (agent definitions)
   │
-  ├──> AGENT-MANIFEST.md (병목 프로토콜)
+  ├──> AGENT-MANIFEST.md (bottleneck protocol)
   │
-  └──> 소비자:
-       ├── agent-hooks.service.ts (IPC 통합)
-       └── 개발 워크플로우 (수동 호출)
+  └──> Consumers:
+       ├── agent-hooks.service.ts (IPC integration)
+       └── Development workflow (manual invocation)
 ```

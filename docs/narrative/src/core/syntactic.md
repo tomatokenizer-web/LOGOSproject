@@ -1,20 +1,20 @@
-# 통사 복잡도 분석 모듈
+# Syntactic Complexity Analysis Module
 
 > **Code**: `src/core/syntactic.ts`
 > **Tier**: 1 (Core Algorithm)
 
 ---
 
-## 핵심 수식
+## Core Formulas
 
 ### Complexity Score
 
-통사 복잡도를 0-1 범위로 정규화:
+Normalizes syntactic complexity to 0-1 range:
 
 ```
 S = Σᵢ wᵢ × normalize(metricᵢ / C2_target)
 
-가중치:
+Weights:
   sentenceLength:      0.20
   subordinationIndex:  0.20
   dependencyDepth:     0.15
@@ -24,9 +24,9 @@ S = Σᵢ wᵢ × normalize(metricᵢ / C2_target)
   avgDependencyDist:   0.10
 ```
 
-### Lu (2010, 2011) 메트릭
+### Lu (2010, 2011) Metrics
 
-학술 연구 기반 통사 복잡도 지표:
+Research-based syntactic complexity measures:
 
 ```
 MLC = totalWords / totalClauses          (Mean Length of Clause)
@@ -39,7 +39,7 @@ CT/T = complexTUnits / tUnitCount        (Complex T-units Ratio)
 
 ### Subordination Index
 
-종속절 비율:
+Proportion of subordinate clauses:
 
 ```
 SI = subordinateClauses / (mainClauses + subordinateClauses)
@@ -49,7 +49,7 @@ mainClauses = 1 + coordinationCount
 
 ### Dependency Depth Estimation
 
-의존 구조 깊이 추정 (휴리스틱):
+Heuristic estimation of dependency structure depth:
 
 ```
 DD = ceil(log₂(sentenceLength + 1)) + subordinateClauseCount
@@ -57,7 +57,7 @@ DD = ceil(log₂(sentenceLength + 1)) + subordinateClauseCount
 
 ---
 
-## CEFR 복잡도 목표값
+## CEFR Complexity Targets
 
 ### CEFR_COMPLEXITY_TARGETS (lines 216-307)
 
@@ -70,7 +70,7 @@ DD = ceil(log₂(sentenceLength + 1)) + subordinateClauseCount
 | C1 | 25 | 6 | 3.0 | 0.40 | 0.20 | 0.60 | 11.0 | 1.1 | 0.45 |
 | C2 | 30 | 7 | 4.0 | 0.50 | 0.25 | 0.65 | 12.5 | 1.4 | 0.55 |
 
-### CEFR 추정 (lines 788-797)
+### CEFR Estimation (lines 788-797)
 
 ```typescript
 function estimateCEFRLevel(metrics: SyntacticComplexity): CEFRLevel {
@@ -87,41 +87,41 @@ function estimateCEFRLevel(metrics: SyntacticComplexity): CEFRLevel {
 
 ---
 
-## 절 구조 분석
+## Clause Structure Analysis
 
-### SUBORDINATORS 데이터베이스 (lines 312-340)
+### SUBORDINATORS Database (lines 312-340)
 
-**관계절** (Relative):
+**Relative clauses**:
 ```typescript
 'who', 'whom', 'whose', 'which', 'that'
 ```
 
-**시간절** (Temporal):
+**Temporal clauses**:
 ```typescript
 'when', 'while', 'after', 'before', 'until', 'since', 'as soon as', 'once'
 ```
 
-**조건절** (Conditional):
+**Conditional clauses**:
 ```typescript
 'if', 'unless', 'provided', 'providing', 'supposing'
 ```
 
-**인과절** (Causal):
+**Causal clauses**:
 ```typescript
 'because', 'as', 'for', 'due to'
 ```
 
-**양보절** (Concessive):
+**Concessive clauses**:
 ```typescript
 'although', 'though', 'even though', 'whereas', 'even if'
 ```
 
-**목적절** (Purpose):
+**Purpose clauses**:
 ```typescript
 'so that', 'in order that', 'so'
 ```
 
-**명사절** (Nominal):
+**Nominal clauses**:
 ```typescript
 'whether', 'how', 'what', 'why', 'where'
 ```
@@ -134,7 +134,7 @@ function analyzeClauseStructure(sentence: string): ClauseAnalysis {
   const subordinateTypes: SubordinateClauseType[] = [];
   let subordinateClauses = 0;
 
-  // 종속 접속사별 절 카운트
+  // Count clauses by subordinating conjunction
   for (const [marker, type] of Object.entries(SUBORDINATORS)) {
     const regex = new RegExp(`\\b${marker}\\b`, 'gi');
     const matches = lowerSentence.match(regex);
@@ -144,7 +144,7 @@ function analyzeClauseStructure(sentence: string): ClauseAnalysis {
     }
   }
 
-  // 등위 접속사 카운트
+  // Count coordinating conjunctions
   let coordinationCount = 0;
   for (const coord of COORDINATORS) {  // 'and', 'but', 'or', 'nor', 'for', 'yet', 'so'
     const regex = new RegExp(`\\b${coord}\\b`, 'gi');
@@ -154,7 +154,7 @@ function analyzeClauseStructure(sentence: string): ClauseAnalysis {
     }
   }
 
-  // 주절 = 1 (기본) + 등위 접속
+  // Main clauses = 1 (base) + coordination
   const mainClauses = 1 + coordinationCount;
 
   return {
@@ -168,18 +168,18 @@ function analyzeClauseStructure(sentence: string): ClauseAnalysis {
 
 ---
 
-## Complex Nominal 탐지
+## Complex Nominal Detection
 
-### Lu (2010) 정의
+### Lu (2010) Definition
 
-Complex nominal = 전치/후치 수식을 받는 명사구:
+Complex nominal = noun phrase with pre/post modification:
 
-1. **형용사 + 명사**: `important finding`, `clinical assessment`
-2. **명사 + 전치사구**: `treatment of infection`
-3. **명사 + 관계절**: `patient who presented`
-4. **명사 + 분사**: `findings based on`
-5. **분사 + 명사**: `increasing evidence`
-6. **동명사 주어**: `Taking medication is...`
+1. **Adjective + noun**: `important finding`, `clinical assessment`
+2. **Noun + prepositional phrase**: `treatment of infection`
+3. **Noun + relative clause**: `patient who presented`
+4. **Noun + participle**: `findings based on`
+5. **Participle + noun**: `increasing evidence`
+6. **Gerund subject**: `Taking medication is...`
 
 ### detectComplexNominals() (lines 611-683)
 
@@ -187,7 +187,7 @@ Complex nominal = 전치/후치 수식을 받는 명사구:
 function detectComplexNominals(sentence: string): ComplexNominal[] {
   const complexNominals: ComplexNominal[] = [];
 
-  // 1. 형용사 + 명사 패턴
+  // 1. Adjective + noun pattern
   const adjNounRegex = /\b(important|significant|complex|...)\s+\w+(tion|ment|...)\b/gi;
   while ((match = adjNounRegex.exec(sentence)) !== null) {
     complexNominals.push({
@@ -197,38 +197,38 @@ function detectComplexNominals(sentence: string): ComplexNominal[] {
     });
   }
 
-  // 2. 명사 + 전치사구 패턴
+  // 2. Noun + prepositional phrase pattern
   const nounPPRegex = /\b\w+(tion|...)\s+(of|in|for|with|...)\s+(the|a|...)\b/gi;
   // ...
 
-  // 3. 명사 + 관계절 패턴
+  // 3. Noun + relative clause pattern
   const nounRelRegex = /\b\w+\s+(who|which|that|...)\s+\w+/gi;
   // ...
 
-  // 4. 명사 + 분사 패턴
-  // 5. 분사 + 명사 패턴
-  // 6. 동명사 주어 패턴
+  // 4. Noun + participle pattern
+  // 5. Participle + noun pattern
+  // 6. Gerund subject pattern
 
-  // 위치 기반 중복 제거
+  // Remove duplicates by position
   return uniqueNominals;
 }
 ```
 
 ---
 
-## T-unit 메트릭
+## T-unit Metrics
 
-### T-unit 정의 (Hunt, 1965)
+### T-unit Definition (Hunt, 1965)
 
 T-unit = minimal terminable unit
-       = 하나의 주절 + 부속 종속절
+       = one main clause + attached subordinate clauses
 
 ```
 "The doctor arrived, and she examined the patient."
 → 2 T-units: "The doctor arrived" + "she examined the patient"
 
 "Although tired, the doctor examined the patient."
-→ 1 T-unit (주절 + 종속절)
+→ 1 T-unit (main clause + subordinate clause)
 ```
 
 ### calculateTUnitMetrics() (lines 694-750)
@@ -252,10 +252,10 @@ function calculateTUnitMetrics(text: string): TUnitMetrics {
     const clauses = clauseAnalysis.mainClauses + clauseAnalysis.subordinateClauses;
     totalClauses += clauses;
 
-    // T-units = 주절 수
+    // T-units = number of main clauses
     totalTUnits += clauseAnalysis.mainClauses;
 
-    // Complex T-units = 종속절 포함 T-unit
+    // Complex T-units = T-units containing subordinate clauses
     if (clauseAnalysis.subordinateClauses > 0) {
       complexTUnits += Math.min(
         clauseAnalysis.mainClauses,
@@ -281,7 +281,7 @@ function calculateTUnitMetrics(text: string): TUnitMetrics {
 
 ---
 
-## 수동태 탐지
+## Passive Voice Detection
 
 ### countPassiveConstructions() (lines 547-565)
 
@@ -289,7 +289,7 @@ function calculateTUnitMetrics(text: string): TUnitMetrics {
 function countPassiveConstructions(sentence: string): number {
   let count = 0;
 
-  // 패턴: be동사 + 과거분사 (-ed)
+  // Pattern: be-verb + past participle (-ed)
   const passiveAux = ['is', 'are', 'was', 'were', 'been', 'being', 'be'];
 
   for (const aux of passiveAux) {
@@ -300,7 +300,7 @@ function countPassiveConstructions(sentence: string): number {
     }
   }
 
-  // "by + agent" 추가 확인
+  // Additional check for "by + agent"
   if (/\bby\s+(the|a|an|\w+)\b/i.test(sentence)) {
     count = Math.max(count, 1);
   }
@@ -311,7 +311,7 @@ function countPassiveConstructions(sentence: string): number {
 
 ---
 
-## 복잡도 점수 계산
+## Complexity Score Calculation
 
 ### calculateComplexityScore() (lines 802-834)
 
@@ -327,7 +327,7 @@ function calculateComplexityScore(metrics: SyntacticComplexity): number {
     averageDependencyDistance: 0.10
   };
 
-  // C2 목표값 대비 정규화
+  // Normalize against C2 targets
   const c2 = CEFR_COMPLEXITY_TARGETS['C2'];
 
   const normalized = {
@@ -340,7 +340,7 @@ function calculateComplexityScore(metrics: SyntacticComplexity): number {
     averageDependencyDistance: min(1, metrics.averageDependencyDistance / c2.averageDependencyDistance)
   };
 
-  // 가중 합
+  // Weighted sum
   let score = 0;
   for (const [key, weight] of Object.entries(weights)) {
     score += normalized[key] * weight;
@@ -352,7 +352,7 @@ function calculateComplexityScore(metrics: SyntacticComplexity): number {
 
 ---
 
-## 품사 추정
+## Part-of-Speech Estimation
 
 ### estimatePartOfSpeech() (lines 891-928)
 
@@ -360,14 +360,14 @@ function calculateComplexityScore(metrics: SyntacticComplexity): number {
 function estimatePartOfSpeech(word: string): PartOfSpeech {
   const lower = word.toLowerCase();
 
-  // 폐쇄 클래스 단어 조회
+  // Lookup closed-class words
   if (DETERMINERS.includes(lower)) return 'determiner';
   if (PRONOUNS.includes(lower)) return 'pronoun';
   if (PREPOSITIONS.includes(lower)) return 'preposition';
   if (CONJUNCTIONS.includes(lower)) return 'conjunction';
   if (AUXILIARIES.includes(lower)) return 'auxiliary';
 
-  // 접미사 기반 추론
+  // Suffix-based inference
   if (/ly$/.test(lower) && lower.length > 3) return 'adverb';
   if (/(tion|ment|ness|ity|ism|er|or|ist|ance|ence|ship|hood|dom)$/.test(lower)) {
     return 'noun';
@@ -383,7 +383,7 @@ function estimatePartOfSpeech(word: string): PartOfSpeech {
 }
 ```
 
-### Subcategorization 추론 (lines 965-990)
+### Subcategorization Inference (lines 965-990)
 
 ```typescript
 function inferSubcategorization(word: string, pos: PartOfSpeech): string[] {
@@ -392,16 +392,16 @@ function inferSubcategorization(word: string, pos: PartOfSpeech): string[] {
   const frames: string[] = [];
   const lower = word.toLowerCase();
 
-  // 타동사
+  // Transitive
   if (TRANSITIVE_VERBS.includes(lower)) frames.push('+transitive');
 
-  // 자동사
+  // Intransitive
   if (INTRANSITIVE_VERBS.includes(lower)) frames.push('+intransitive');
 
-  // 이중타동사
+  // Ditransitive
   if (DITRANSITIVE_VERBS.includes(lower)) frames.push('+ditransitive');
 
-  // 기본값: 타동사
+  // Default: transitive
   if (frames.length === 0 && pos === 'verb') {
     frames.push('+transitive');
   }
@@ -412,12 +412,12 @@ function inferSubcategorization(word: string, pos: PartOfSpeech): string[] {
 
 ---
 
-## 장르 구조 분석
+## Genre Structure Analysis
 
 ### GENRE_STRUCTURES (lines 365-401)
 
-| 장르 | 도메인 | 섹션 | CEFR 범위 |
-|------|--------|------|-----------|
+| Genre | Domain | Sections | CEFR Range |
+|-------|--------|----------|------------|
 | SOAP_note | medical | Subjective, Objective, Assessment, Plan | B2-C1 |
 | SBAR_handoff | medical | Situation, Background, Assessment, Recommendation | B1-B2 |
 | academic_abstract | academic | Background, Methods, Results, Conclusions | C1-C2 |
@@ -431,18 +431,18 @@ function detectGenre(text: string): GenreStructure | null {
   const lower = text.toLowerCase();
 
   for (const genre of GENRE_STRUCTURES) {
-    // 섹션 마커 검색
+    // Search for section markers
     const sectionMatches = genre.sections.filter(s =>
       lower.includes(s.toLowerCase() + ':') ||
       lower.includes(s.toLowerCase() + ' -')
     ).length;
 
-    // 패턴 매칭
+    // Pattern matching
     const patternMatches = genre.patterns.filter(p =>
       lower.includes(p.toLowerCase().slice(0, 10))
     ).length;
 
-    // 복수 마커 일치 → 해당 장르
+    // Multiple marker matches → identified genre
     if (sectionMatches >= 2 || patternMatches >= 2) {
       return genre;
     }
@@ -463,7 +463,7 @@ function analyzeGenreCompliance(
   const missingSections: string[] = [];
   const suggestions: string[] = [];
 
-  // 섹션 존재 확인
+  // Check section presence
   for (const section of genre.sections) {
     if (!lower.includes(section.toLowerCase())) {
       missingSections.push(section);
@@ -471,7 +471,7 @@ function analyzeGenreCompliance(
     }
   }
 
-  // 복잡도 범위 확인
+  // Check complexity range
   const analysis = analyzeSyntacticComplexity(text);
   const minLevel = CEFR_COMPLEXITY_TARGETS[genre.targetCEFR.min];
   const maxLevel = CEFR_COMPLEXITY_TARGETS[genre.targetCEFR.max];
@@ -493,53 +493,53 @@ function analyzeGenreCompliance(
 
 ---
 
-## 핵심 함수
+## Key Functions
 
-| 함수 | 라인 | 복잡도 | 용도 |
-|------|------|--------|------|
-| `analyzeSyntacticComplexity` | 421-435 | O(n×w) | 전체 복잡도 분석 |
-| `analyzeSingleSentence` | 440-503 | O(w) | 단일 문장 분석 |
-| `analyzeClauseStructure` | 508-542 | O(s×m) | 절 구조 분석 |
-| `countPassiveConstructions` | 547-565 | O(a) | 수동태 카운트 |
-| `detectComplexNominals` | 611-683 | O(p×n) | Lu CN/C 계산 |
-| `calculateTUnitMetrics` | 694-750 | O(n×w) | T-unit 메트릭 |
-| `calculateLuMetrics` | 758-779 | O(n×w) | Lu 전체 메트릭 |
-| `estimateCEFRLevel` | 788-797 | O(1) | CEFR 추정 |
-| `calculateComplexityScore` | 802-834 | O(1) | 복잡도 점수 |
-| `toSyntacticVector` | 933-960 | O(w) | 벡터 생성 |
-| `detectGenre` | 1021-1043 | O(g×s) | 장르 탐지 |
-| `analyzeGenreCompliance` | 1048-1079 | O(s) | 장르 준수도 |
-| `getSimplificationSuggestions` | 853-882 | O(1) | 단순화 제안 |
-| `isSuitableForStage` | 1186-1202 | O(w) | 단계 적합성 |
+| Function | Lines | Complexity | Purpose |
+|----------|-------|------------|---------|
+| `analyzeSyntacticComplexity` | 421-435 | O(n×w) | Full complexity analysis |
+| `analyzeSingleSentence` | 440-503 | O(w) | Single sentence analysis |
+| `analyzeClauseStructure` | 508-542 | O(s×m) | Clause structure analysis |
+| `countPassiveConstructions` | 547-565 | O(a) | Passive voice count |
+| `detectComplexNominals` | 611-683 | O(p×n) | Lu CN/C calculation |
+| `calculateTUnitMetrics` | 694-750 | O(n×w) | T-unit metrics |
+| `calculateLuMetrics` | 758-779 | O(n×w) | Complete Lu metrics |
+| `estimateCEFRLevel` | 788-797 | O(1) | CEFR estimation |
+| `calculateComplexityScore` | 802-834 | O(1) | Complexity score |
+| `toSyntacticVector` | 933-960 | O(w) | Vector generation |
+| `detectGenre` | 1021-1043 | O(g×s) | Genre detection |
+| `analyzeGenreCompliance` | 1048-1079 | O(s) | Genre compliance |
+| `getSimplificationSuggestions` | 853-882 | O(1) | Simplification suggestions |
+| `isSuitableForStage` | 1186-1202 | O(w) | Stage suitability |
 
 ---
 
-## 의존 관계
+## Dependencies
 
 ```
-syntactic.ts (독립적, 외부 의존성 없음)
+syntactic.ts (independent, no external dependencies)
   │
   ├──> component-vectors.ts
-  │      SYNTVector 계산에 활용
+  │      Used for SYNTVector calculation
   │      - complexityScore → SYNTVector.complexityScore
   │      - subordinationIndex → SYNTVector.dependentClausesPerClause
   │      - dependencyDepth → SYNTVector.embeddingDepth
   │
   ├──> bottleneck.ts
-  │      SYNT 컴포넌트 오류 패턴 분석
+  │      SYNT component error pattern analysis
   │
   ├──> priority.ts
-  │      Syntactic Cost 계산
+  │      Syntactic Cost calculation
   │
   └──> Services:
-       ├── task-generation.service (통사 과제 생성)
-       ├── content-selection (CEFR 필터링)
-       └── simplification (단순화 제안)
+       ├── task-generation.service (syntactic task generation)
+       ├── content-selection (CEFR filtering)
+       └── simplification (simplification suggestions)
 ```
 
 ---
 
-## 학술적 기반
+## Academic Foundation
 
 - Lu, X. (2010). *Automatic analysis of syntactic complexity in second language writing*. International Journal of Corpus Linguistics
 - Lu, X. (2011). *A corpus-based evaluation of syntactic complexity measures as indices of college-level ESL writers' language development*. TESOL Quarterly

@@ -5,9 +5,9 @@
 
 ---
 
-## 목적
+## Purpose
 
-IPC 핸들러에 통합 가능한 자동 에이전트 트리거 훅 제공. IPC 작업과 에이전트 조정 사이의 브릿지.
+Provides automatic agent trigger hooks integrable with IPC handlers. Bridge between IPC operations and agent coordination.
 
 ---
 
@@ -37,10 +37,10 @@ DOMAIN_LAYER_MAP: Record<DomainType, Layer[]> = {
 preOperationHook(context: HookContext): HookResult
 ```
 
-작업 전 에이전트 트리거 감지:
-- 레이어 결정
-- 보안 민감도 체크
-- 외부 API 필요 여부
+Pre-operation agent trigger detection:
+- Layer determination
+- Security sensitivity check
+- External API requirement check
 
 ### postOperationHook
 
@@ -49,9 +49,9 @@ preOperationHook(context: HookContext): HookResult
 postOperationHook(context, success, result): HookResult
 ```
 
-작업 후 결과 처리:
-- 실패시 병목으로 등록
-- 에러 유형 추론
+Post-operation result handling:
+- Register as bottleneck on failure
+- Infer error type
 
 ### errorHook
 
@@ -60,10 +60,10 @@ postOperationHook(context, success, result): HookResult
 errorHook(domain, operation, location, error): HookResult
 ```
 
-에러 발생시:
-- 병목 유형 추론
-- 영향받는 에이전트 결정
-- 우선순위 'immediate'로 설정
+On error occurrence:
+- Infer bottleneck type
+- Determine affected agents
+- Set priority to 'immediate'
 
 ---
 
@@ -100,7 +100,8 @@ function withAgentHooks<TRequest, TResponse>(
 ): WrappedHandler
 ```
 
-**사용 예시**:
+**Usage Example**:
+
 ```typescript
 const wrappedHandler = withAgentHooks(
   'goal',
@@ -110,11 +111,11 @@ const wrappedHandler = withAgentHooks(
 );
 ```
 
-**동작**:
-1. `preOperationHook` 호출
-2. 원래 핸들러 실행
-3. 성공/실패에 따라 `postOperationHook` 또는 `errorHook`
-4. 트리거 로깅
+**Behavior**:
+1. Call `preOperationHook`
+2. Execute original handler
+3. Call `postOperationHook` or `errorHook` based on success/failure
+4. Log triggers
 
 ---
 
@@ -126,17 +127,17 @@ triggerDocumentation(filePath): AgentTrigger[]
 triggerSecurityReview(filePath): AgentTrigger[]
 ```
 
-수동으로 특정 에이전트 트리거 요청.
+Manually request specific agent triggers.
 
 ---
 
-## 의존 관계
+## Dependencies
 
-```
+```text
 agent-hooks.service.ts
   │
-  ├──> agent-trigger.service.ts (트리거 로직)
+  ├──> agent-trigger.service.ts (trigger logic)
   │
-  └──> 소비자:
-       └── IPC handlers (래퍼 적용)
+  └──> Consumers:
+       └── IPC handlers (wrapper application)
 ```

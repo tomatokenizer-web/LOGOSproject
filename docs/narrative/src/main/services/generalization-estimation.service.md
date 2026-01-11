@@ -5,36 +5,36 @@
 
 ---
 
-## 목적
+## Purpose
 
-학습된 맥락에서 미학습 맥락으로의 전이 가능성 추정. Usage Space 전체가 조합적으로 방대하므로 대표 샘플에서 전체 커버리지 추정.
+Estimates transfer probability from trained contexts to untrained contexts. Since the entire Usage Space is combinatorially vast, estimates total coverage from representative samples.
 
-**핵심 알고리즘**:
-- Transfer Distance 계산 (맥락 간 유사도)
-- Transfer Probability 추정 (전이 성공 확률)
-- Representative Sample 선택 (일반화 극대화)
-- Coverage Estimation (전체 사용 공간 추정)
+**Core Algorithms**:
+- Transfer Distance calculation (context similarity)
+- Transfer Probability estimation (transfer success probability)
+- Representative Sample selection (maximize generalization)
+- Coverage Estimation (total usage space estimation)
 
 ---
 
-## 이론적 기반
+## Theoretical Foundation
 
 ### Transfer Distance (Thorndike, 1901)
 
-```
+```text
 Distance = 1 - Similarity
 
 Similarity = |SharedFeatures| / |TotalFeatures|
 ```
 
-**동일 요소 이론**: 두 맥락 간 공유 요소가 많을수록 전이가 용이.
+**Identical Elements Theory**: More shared elements between two contexts = easier transfer.
 
-| Feature | 공유시 전이 용이 |
-|---------|------------------|
-| domain | 같은 영역 (medical-medical) |
-| register | 같은 격식 (formal-formal) |
-| modality | 같은 양상 (spoken-spoken) |
-| genre | 같은 장르 (consultation-consultation) |
+| Feature | Transfer facilitated when shared |
+|---------|----------------------------------|
+| domain | Same domain (medical-medical) |
+| register | Same register (formal-formal) |
+| modality | Same modality (spoken-spoken) |
+| genre | Same genre (consultation-consultation) |
 
 ### Transfer Probability (Perkins & Salomon, 1992)
 
@@ -45,17 +45,18 @@ automationBoost = sourceAutomationLevel * 0.3;
 transferProbability = min(1, baseProbability + automationBoost);
 ```
 
-**전이 유형**:
-| 유형 | Distance | 확률 | 특성 |
-|------|----------|------|------|
-| Near Transfer | ≤ 0.5 | ~60% | 자동 전이 가능 |
-| Far Transfer | > 0.5 | ~13% | 명시적 브릿징 필요 |
+**Transfer Types**:
+
+| Type | Distance | Probability | Characteristics |
+|------|----------|-------------|-----------------|
+| Near Transfer | ≤ 0.5 | ~60% | Automatic transfer possible |
+| Far Transfer | > 0.5 | ~13% | Explicit bridging required |
 
 ---
 
 ## Representative Sample Selection
 
-### 선택 기준 (lines 234-302)
+### Selection Criteria (lines 234-302)
 
 ```typescript
 totalScore =
@@ -64,13 +65,13 @@ totalScore =
   transferPotentialScore × strategy.transferWeight;
 ```
 
-| 점수 | 계산 방법 | 목적 |
-|------|----------|------|
-| Goal Alignment | 목표 맥락과의 유사도 | 목표 달성 |
-| Diversity | 기존 커버리지와의 거리 | 중복 방지 |
-| Transfer Potential | 다른 미커버 맥락 도달 가능성 | 효율 극대화 |
+| Score | Calculation Method | Purpose |
+|-------|-------------------|---------|
+| Goal Alignment | Similarity to target context | Goal achievement |
+| Diversity | Distance from existing coverage | Avoid redundancy |
+| Transfer Potential | Reachability to other uncovered contexts | Maximize efficiency |
 
-### 컴포넌트별 전략
+### Component-Specific Strategies
 
 ```typescript
 // from types.ts COMPONENT_SAMPLING_STRATEGIES
@@ -81,70 +82,70 @@ SYNT:  { goalWeight: 0.4, diversityWeight: 0.3, transferWeight: 0.3, minSamples:
 PRAG:  { goalWeight: 0.6, diversityWeight: 0.2, transferWeight: 0.2, minSamples: 10 }
 ```
 
-**논리**: PHON은 전이율 높아 적은 샘플로 일반화, PRAG는 전이율 낮아 많은 샘플 필요.
+**Rationale**: PHON has high transfer rate so generalizes with fewer samples; PRAG has low transfer rate so needs many samples.
 
 ---
 
-## 컴포넌트별 일반화 패턴
+## Component-Specific Generalization Patterns
 
 ### PHON (lines 569-606)
 
 ```typescript
-positionTransferRate = 0.7;  // 위치 간 70% 전이
-confidence = 0.8;            // 높은 확신도
+positionTransferRate = 0.7;  // 70% transfer across positions
+confidence = 0.8;            // High confidence
 ```
 
-음운 규칙은 추상적이어서 위치에 관계없이 일반화.
+Phonological rules are abstract, generalizing regardless of position.
 
 ### MORPH (lines 608-644)
 
 ```typescript
-productivityRate = 0.6;  // Carlisle (2000) 기반
+productivityRate = 0.6;  // Based on Carlisle (2000)
 confidence = 0.75;
 ```
 
-접사는 새로운 어근에 생산적으로 적용 가능.
+Affixes can be productively applied to new stems.
 
 ### LEX (lines 646-683)
 
 ```typescript
-nearTransferCoverage = (1 - directCoverage) × 0.25;  // 낮은 전이
+nearTransferCoverage = (1 - directCoverage) × 0.25;  // Low transfer
 farTransferCoverage = 0.05;
 confidence = 0.7;
 ```
 
-어휘는 맥락 특수적, 연어 관계가 전이 제한.
+Vocabulary is context-specific; collocational relationships limit transfer.
 
 ### SYNT (lines 685-722)
 
 ```typescript
-nearTransferCoverage = (1 - directCoverage) × 0.35;  // 중간 전이
+nearTransferCoverage = (1 - directCoverage) × 0.35;  // Medium transfer
 confidence = 0.7;
 ```
 
-문법 패턴은 어느 정도 추상화 가능하나 장르 의존성 존재.
+Grammar patterns can be abstracted to some degree but have genre dependency.
 
 ### PRAG (lines 724-767)
 
 ```typescript
-nearTransferCoverage = (1 - directCoverage) × 0.2;  // 최저 전이
+nearTransferCoverage = (1 - directCoverage) × 0.2;  // Lowest transfer
 farTransferCoverage = 0.02;
 confidence = 0.6;
 ```
 
-화용은 고도로 맥락 의존적, 대화 상대/상황에 따라 완전히 다름.
+Pragmatics is highly context-dependent; completely different based on interlocutor/situation.
 
 ---
 
-## Coverage Breakdown 구조
+## Coverage Breakdown Structure
 
 ```typescript
 interface CoverageBreakdown {
-  directCoverage: number;        // 실제 훈련된 맥락
-  nearTransferCoverage: number;  // 근전이로 추론된 커버리지
-  farTransferCoverage: number;   // 원전이로 추론된 커버리지
+  directCoverage: number;        // Actually trained contexts
+  nearTransferCoverage: number;  // Coverage inferred via near transfer
+  farTransferCoverage: number;   // Coverage inferred via far transfer
   totalEstimatedCoverage: number;
-  confidence: number;            // 추정 신뢰도
+  confidence: number;            // Estimation confidence
 }
 ```
 
@@ -157,28 +158,28 @@ interface CoverageBreakdown {
 additionalSamples = ceil(coverageGap × baseMinimum × 2 × transferMultiplier);
 
 transferMultiplier = {
-  PHON: 0.7,   // 높은 전이 = 적은 샘플
+  PHON: 0.7,   // High transfer = fewer samples
   MORPH: 0.8,
-  LEX: 1.2,    // 낮은 전이 = 많은 샘플
+  LEX: 1.2,    // Low transfer = more samples
   SYNT: 1.0,
-  PRAG: 1.4    // 최저 전이 = 가장 많은 샘플
+  PRAG: 1.4    // Lowest transfer = most samples
 };
 ```
 
-**Power Law of Practice** (Newell & Rosenbloom, 1981): 수행 능력은 연습량의 거듭제곱 함수로 향상.
+**Power Law of Practice** (Newell & Rosenbloom, 1981): Performance improves as a power function of practice amount.
 
 ---
 
-## 의존 관계
+## Dependencies
 
-```
+```text
 generalization-estimation.service.ts
   │
   ├──> usage-space-tracking.service.ts (STANDARD_CONTEXTS, getObjectUsageSpace)
   │
   ├──> types.ts (COMPONENT_SAMPLING_STRATEGIES)
   │
-  └──> 소비자:
-       ├── task-composition.service (맥락 선택)
-       └── usage-space-tracking.service (추천 맥락 계산)
+  └──> Consumers:
+       ├── task-composition.service (context selection)
+       └── usage-space-tracking.service (recommended context calculation)
 ```

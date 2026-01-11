@@ -5,16 +5,16 @@
 
 ---
 
-## 목적
+## Purpose
 
-Phase 3.4 구현: 유창성-다양성 균형. 세션 비율 추적, 진행도 기반 조정, 적절한 과제 유형 생성.
+Phase 3.4 implementation: Fluency-Versatility balance. Session ratio tracking, progress-based adjustment, appropriate task type generation.
 
-**유창성**: 고-PMI 연어, 속도 중심 (bread and butter)
-**다양성**: 저-PMI 조합, 창의적 확장 (bread and marmalade)
+**Fluency**: High-PMI collocations, speed-focused (bread and butter)
+**Versatility**: Low-PMI combinations, creative extension (bread and marmalade)
 
 ---
 
-## 레벨별 기본 비율
+## Level-Based Default Ratios
 
 ```typescript
 const LEVEL_RATIOS = {
@@ -24,51 +24,51 @@ const LEVEL_RATIOS = {
 };
 ```
 
-**논리**: 초보자는 자동화된 청크 구축 필요, 고급자는 유연한 사용 필요.
+**Rationale**: Beginners need to build automated chunks; advanced learners need flexible usage.
 
 ---
 
-## 핵심 함수
+## Core Functions
 
-### 비율 계산
+### Ratio Calculation
 
-| 함수 | 용도 |
-|------|------|
-| `calculateTargetRatio(userId, goalId)` | 목표 비율 계산 |
-| `getSessionBalance(sessionId)` | 현재 세션 균형 조회 |
-| `adjustRatioForProgress(ratio, stats)` | 진행도 기반 조정 |
+| Function | Purpose |
+|----------|---------|
+| `calculateTargetRatio(userId, goalId)` | Calculate target ratio |
+| `getSessionBalance(sessionId)` | Query current session balance |
+| `adjustRatioForProgress(ratio, stats)` | Progress-based adjustment |
 
-### 과제 생성
+### Task Generation
 
-| 함수 | 용도 |
-|------|------|
-| `generateFluencyTask(goalId)` | 고-PMI 속도 과제 생성 |
-| `generateVersatilityTask(goalId)` | 저-PMI 창의 과제 생성 |
-| `getNextTaskType(sessionId)` | 다음 과제 유형 결정 |
+| Function | Purpose |
+|----------|---------|
+| `generateFluencyTask(goalId)` | Generate high-PMI speed tasks |
+| `generateVersatilityTask(goalId)` | Generate low-PMI creative tasks |
+| `getNextTaskType(sessionId)` | Determine next task type |
 
-### 전환 분석
+### Transition Analysis
 
-| 함수 | 용도 |
-|------|------|
-| `analyzeTransition(userId, goalId)` | 모드 전환 필요성 분석 |
-| `checkHeadDomainCoverage(goalId)` | 핵심 영역 숙달도 체크 |
+| Function | Purpose |
+|----------|---------|
+| `analyzeTransition(userId, goalId)` | Analyze mode transition necessity |
+| `checkHeadDomainCoverage(goalId)` | Check core domain mastery |
 
 ---
 
-## 전환 조건
+## Transition Conditions
 
-### 유창성 → 다양성 전환
+### Fluency → Versatility Shift
 
 ```typescript
 shouldShift =
-  headDomainCoverage >= 0.8 &&    // 핵심 연어 80% 숙달
-  fluencySpeed < 3000 &&           // 3초 내 응답
-  productionImprovement > 0.1;     // 생산 개선 10%+
+  headDomainCoverage >= 0.8 &&    // 80% core collocation mastery
+  fluencySpeed < 3000 &&           // Response within 3 seconds
+  productionImprovement > 0.1;     // 10%+ production improvement
 ```
 
 ---
 
-## 세션 균형 관리
+## Session Balance Management
 
 ```typescript
 interface SessionBalance {
@@ -76,22 +76,22 @@ interface SessionBalance {
   currentRatio: { fluency: 0.7, versatility: 0.3 };
   fluencyTaskCount: 14;
   versatilityTaskCount: 6;
-  recommendedNextType: 'versatility';  // 균형 회복
+  recommendedNextType: 'versatility';  // Balance recovery
 }
 ```
 
 ---
 
-## 의존 관계
+## Dependencies
 
-```
+```text
 fluency-versatility.service.ts
   │
-  ├──> collocation.repository.ts (PMI 데이터)
+  ├──> collocation.repository.ts (PMI data)
   │
-  ├──> mastery.repository.ts (숙달 통계)
+  ├──> mastery.repository.ts (mastery statistics)
   │
-  └──> 소비자:
-       ├── task-generation.service (과제 유형 선택)
-       └── session.repository (세션 균형 기록)
+  └──> Consumers:
+       ├── task-generation.service (task type selection)
+       └── session.repository (session balance recording)
 ```

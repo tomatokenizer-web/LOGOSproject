@@ -1,53 +1,53 @@
-# 병목 탐지 모듈
+# Bottleneck Detection Module
 
 > **Code**: `src/core/bottleneck.ts`
 > **Tier**: 1 (Core Algorithm)
 
 ---
 
-## 핵심 개념
+## Core Concepts
 
-### 언어 구성요소 캐스케이드
+### Language Component Cascade
 
-오류는 언어 처리 계층을 따라 전파:
+Errors propagate through language processing layers:
 
 ```
 PHON → MORPH → LEX → SYNT → PRAG
-(음운)  (형태)  (어휘)  (통사)  (화용)
+(phonology)  (morphology)  (lexical)  (syntax)  (pragmatics)
 
-예시:
-- MORPH 오류 (-ing 어미)
-  → LEX 오류 (동사 의미 혼동)
-    → SYNT 오류 (시제 불일치)
-      → PRAG 오류 (부적절한 화행)
+Example:
+- MORPH error (-ing ending)
+  → LEX error (verb meaning confusion)
+    → SYNT error (tense mismatch)
+      → PRAG error (inappropriate speech act)
 ```
 
-**핵심 통찰**: 가장 높은 오류율이 아니라 **근본 원인**을 찾아야 함.
+**Key Insight**: Find the **root cause**, not just the highest error rate.
 
-### 병목 탐지 알고리즘
+### Bottleneck Detection Algorithm
 
-1. 캐스케이드 순서대로 오류율 검사
-2. 임계값 초과 + 하류 오류 존재 → 근본 원인
-3. 캐스케이드 없으면 최고 오류율 선택
+1. Check error rates in cascade order
+2. If threshold exceeded + downstream errors exist → root cause
+3. If no cascade, select highest error rate
 
 ---
 
-## 설정 파라미터
+## Configuration Parameters
 
 ### DEFAULT_BOTTLENECK_CONFIG (lines 121-126)
 
 ```typescript
 export const DEFAULT_BOTTLENECK_CONFIG: BottleneckDetectionConfig = {
-  minResponses: 20,              // 최소 응답 수
-  minResponsesPerType: 5,        // 컴포넌트당 최소
-  errorRateThreshold: 0.3,       // 30% 이상 = 문제
-  cascadeConfidenceThreshold: 0.7 // 캐스케이드 신뢰도
+  minResponses: 20,              // Minimum response count
+  minResponsesPerType: 5,        // Minimum per component
+  errorRateThreshold: 0.3,       // 30%+ = problem
+  cascadeConfidenceThreshold: 0.7 // Cascade confidence
 };
 ```
 
 ---
 
-## 주요 분석 함수
+## Main Analysis Functions
 
 ### analyzeBottleneck() (lines 169-212)
 
@@ -56,7 +56,7 @@ export function analyzeBottleneck(
   responses: ResponseData[],
   config: BottleneckDetectionConfig = DEFAULT_BOTTLENECK_CONFIG
 ): BottleneckAnalysis {
-  // 최소 데이터 체크
+  // Check minimum data
   if (responses.length < config.minResponses) {
     return {
       primaryBottleneck: null,
@@ -66,22 +66,22 @@ export function analyzeBottleneck(
     };
   }
 
-  // 1. 컴포넌트별 통계 계산
+  // 1. Calculate component statistics
   const stats = calculateComponentStats(responses);
 
-  // 2. 증거 배열 구축
+  // 2. Build evidence array
   const evidence = buildEvidence(stats, responses, config);
 
-  // 3. 캐스케이드 분석 (근본 원인 탐색)
+  // 3. Cascade analysis (root cause search)
   const cascade = analyzeCascadingErrors(evidence, config);
 
-  // 4. 주요 병목 결정
+  // 4. Determine primary bottleneck
   let primaryBottleneck = cascade.rootCause;
   if (!primaryBottleneck) {
     primaryBottleneck = findHighestErrorRate(evidence, config);
   }
 
-  // 5. 신뢰도 및 권고사항
+  // 5. Confidence and recommendations
   const confidence = calculateConfidence(evidence, responses.length, cascade);
   const recommendation = generateRecommendation(primaryBottleneck, evidence, cascade);
 
@@ -102,7 +102,7 @@ function calculateComponentStats(
 ): Map<ComponentType, ComponentStats> {
   const stats = new Map<ComponentType, ComponentStats>();
 
-  // 모든 컴포넌트 초기화
+  // Initialize all components
   for (const type of CASCADE_ORDER) {
     stats.set(type, {
       total: 0,
@@ -113,13 +113,13 @@ function calculateComponentStats(
     });
   }
 
-  // 시간순 정렬 (최근 25% 계산용)
+  // Sort by time (for recent 25% calculation)
   const sorted = [...responses].sort(
     (a, b) => a.timestamp.getTime() - b.timestamp.getTime()
   );
   const recentThreshold = Math.floor(sorted.length * 0.75);
 
-  // 통계 집계
+  // Aggregate statistics
   for (let i = 0; i < sorted.length; i++) {
     const r = sorted[i];
     const stat = stats.get(r.componentType);
@@ -131,7 +131,7 @@ function calculateComponentStats(
         stat.errorResponses.push(r);
       }
 
-      // 최근 성과 추적
+      // Track recent performance
       if (i >= recentThreshold) {
         stat.recentTotal++;
         if (!r.correct) stat.recentErrors++;
@@ -145,7 +145,7 @@ function calculateComponentStats(
 
 ---
 
-## 캐스케이드 분석
+## Cascade Analysis
 
 ### analyzeCascadingErrors() (lines 419-454)
 
@@ -154,23 +154,23 @@ export function analyzeCascadingErrors(
   evidence: BottleneckEvidence[],
   config: BottleneckDetectionConfig = DEFAULT_BOTTLENECK_CONFIG
 ): CascadeAnalysis {
-  // 캐스케이드 순서대로 검사
+  // Check in cascade order
   for (const type of CASCADE_ORDER) {
     const ev = evidence.find(e => e.componentType === type);
 
     if (ev && ev.errorRate >= config.errorRateThreshold) {
-      // 하류 컴포넌트 오류 확인
+      // Check downstream component errors
       const typeIndex = CASCADE_ORDER.indexOf(type);
       const downstreamErrors = CASCADE_ORDER
         .slice(typeIndex + 1)
         .filter(t => {
           const downstream = evidence.find(e => e.componentType === t);
-          // 하류 임계값 = 상류의 67%
+          // Downstream threshold = 67% of upstream
           return downstream && downstream.errorRate >= config.errorRateThreshold * 0.67;
         });
 
       if (downstreamErrors.length > 0) {
-        // 캐스케이드 패턴 발견
+        // Cascade pattern found
         return {
           rootCause: type,
           cascadeChain: [type, ...downstreamErrors],
@@ -180,30 +180,30 @@ export function analyzeCascadingErrors(
     }
   }
 
-  // 캐스케이드 없음
+  // No cascade
   return { rootCause: null, cascadeChain: [], confidence: 0 };
 }
 ```
 
-**캐스케이드 탐지 예시**:
+**Cascade Detection Example**:
 
-| 컴포넌트 | 오류율 | 분석 |
-|----------|--------|------|
-| PHON | 15% | 임계값 미만 → 통과 |
-| MORPH | 35% | 임계값 초과 → 하류 검사 |
-| LEX | 28% | 35% × 0.67 = 23.5% 초과 → 영향받음 |
-| SYNT | 22% | 임계값 미만 → 독립적 |
-| PRAG | 10% | 임계값 미만 |
+| Component | Error Rate | Analysis |
+|-----------|------------|----------|
+| PHON | 15% | Below threshold → pass |
+| MORPH | 35% | Above threshold → check downstream |
+| LEX | 28% | Above 35% × 0.67 = 23.5% → affected |
+| SYNT | 22% | Below threshold → independent |
+| PRAG | 10% | Below threshold |
 
-→ **근본 원인**: MORPH, **캐스케이드**: [MORPH, LEX]
+→ **Root Cause**: MORPH, **Cascade**: [MORPH, LEX]
 
 ---
 
-## 오류 패턴 분석
+## Error Pattern Analysis
 
 ### extractErrorPattern() (lines 322-364)
 
-컴포넌트별 오류 분류:
+Component-specific error classification:
 
 ```typescript
 function extractErrorPattern(response: ResponseData): string {
@@ -253,29 +253,29 @@ export function analyzeErrorPatterns(errors: ResponseData[]): string[] {
     patterns.set(pattern, (patterns.get(pattern) || 0) + 1);
   }
 
-  // 2회 이상 발생한 패턴만 반환
+  // Return patterns occurring 2+ times
   return Array.from(patterns.entries())
     .filter(([_, count]) => count >= 2)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)  // 상위 5개
+    .slice(0, 5)  // Top 5
     .map(([pattern, count]) => `${pattern} (${count}×)`);
 }
 ```
 
 ---
 
-## 공기 오류 분석
+## Co-occurring Error Analysis
 
 ### findCooccurringErrors() (lines 374-407)
 
-세션 내 동시 발생 오류 탐지:
+Detect errors co-occurring within sessions:
 
 ```typescript
 export function findCooccurringErrors(
   targetType: ComponentType,
   responses: ResponseData[]
 ): ComponentType[] {
-  // 세션별 오류 그룹화
+  // Group errors by session
   const sessionErrors = new Map<string, Set<ComponentType>>();
 
   for (const r of responses) {
@@ -286,7 +286,7 @@ export function findCooccurringErrors(
     }
   }
 
-  // 공기 빈도 카운트
+  // Count co-occurrence frequency
   const cooccurrence = new Map<ComponentType, number>();
 
   for (const errors of sessionErrors.values()) {
@@ -299,7 +299,7 @@ export function findCooccurringErrors(
     }
   }
 
-  // 2회 이상 공기한 컴포넌트
+  // Components co-occurring 2+ times
   return Array.from(cooccurrence.entries())
     .filter(([_, count]) => count >= 2)
     .sort((a, b) => b[1] - a[1])
@@ -309,7 +309,7 @@ export function findCooccurringErrors(
 
 ---
 
-## 신뢰도 계산
+## Confidence Calculation
 
 ### calculateConfidence() (lines 479-498)
 
@@ -321,13 +321,13 @@ function calculateConfidence(
 ): number {
   if (evidence.length === 0) return 0;
 
-  // 데이터 양 기반 신뢰도
+  // Data volume-based confidence
   const dataConfidence = Math.min(1, totalResponses / 50);
 
-  // 캐스케이드 보너스
+  // Cascade bonus
   const cascadeBoost = cascade.rootCause ? 0.2 : 0;
 
-  // 차별화 보너스 (오류율 차이)
+  // Differentiation bonus (error rate gap)
   const rates = evidence.map(e => e.errorRate).sort((a, b) => b - a);
   const differentiation = rates.length >= 2 ? (rates[0] - rates[1]) : 0;
   const differentiationBoost = Math.min(0.2, differentiation);
@@ -338,7 +338,7 @@ function calculateConfidence(
 
 ---
 
-## 개선 추세 분석
+## Improvement Trend Analysis
 
 ### calculateImprovementTrend() (lines 555-573)
 
@@ -358,14 +358,14 @@ export function calculateImprovementTrend(
   const firstErrorRate = firstHalf.filter(r => !r.correct).length / firstHalf.length;
   const secondErrorRate = secondHalf.filter(r => !r.correct).length / secondHalf.length;
 
-  // 양수 = 개선 중 (최근 오류 감소)
+  // Positive = improving (recent errors decreasing)
   return firstErrorRate - secondErrorRate;
 }
 ```
 
 ---
 
-## 권고사항 생성
+## Recommendation Generation
 
 ### generateRecommendation() (lines 503-540)
 
@@ -385,7 +385,7 @@ function generateRecommendation(
 
   let recommendation = `Focus on ${componentName} (${errorRate}% error rate). `;
 
-  // 캐스케이드 정보 추가
+  // Add cascade information
   if (cascade.rootCause === bottleneck && cascade.cascadeChain.length > 1) {
     const downstream = cascade.cascadeChain.slice(1)
       .map(t => COMPONENT_SHORT[toShortForm(t)])
@@ -393,13 +393,13 @@ function generateRecommendation(
     recommendation += `Improving this will also help with ${downstream}. `;
   }
 
-  // 패턴별 조언
+  // Pattern-specific advice
   if (ev && ev.errorPatterns.length > 0) {
     const topPattern = ev.errorPatterns[0].split(' (')[0];
     recommendation += `Specifically practice: ${topPattern}.`;
   }
 
-  // 개선 추세 메모
+  // Improvement trend note
   if (ev && ev.improvement > 0.05) {
     recommendation += ' (Already improving - keep it up!)';
   } else if (ev && ev.improvement < -0.05) {
@@ -412,54 +412,54 @@ function generateRecommendation(
 
 ---
 
-## 유틸리티 함수
+## Utility Functions
 
-| 함수 | 라인 | 용도 |
-|------|------|------|
-| `isComponentType` | 582-584 | 타입 가드 |
-| `getCascadePosition` | 589-591 | 캐스케이드 위치 |
-| `canCauseErrors` | 596-601 | 상류→하류 관계 |
-| `getDownstreamComponents` | 606-609 | 하류 컴포넌트 |
-| `getUpstreamComponents` | 614-617 | 상류 컴포넌트 |
-| `summarizeBottleneck` | 622-637 | 요약 문자열 |
-
----
-
-## 핵심 함수
-
-| 함수 | 라인 | 복잡도 | 용도 |
-|------|------|--------|------|
-| `analyzeBottleneck` | 169-212 | O(n×c) | 전체 분석 |
-| `calculateComponentStats` | 217-261 | O(n) | 통계 집계 |
-| `buildEvidence` | 266-293 | O(c×e) | 증거 구축 |
-| `analyzeErrorPatterns` | 302-316 | O(e) | 패턴 분석 |
-| `findCooccurringErrors` | 374-407 | O(n) | 공기 오류 |
-| `analyzeCascadingErrors` | 419-454 | O(c²) | 캐스케이드 |
-| `calculateImprovementTrend` | 555-573 | O(n) | 추세 분석 |
-| `generateRecommendation` | 503-540 | O(c) | 권고 생성 |
+| Function | Lines | Purpose |
+|----------|-------|---------|
+| `isComponentType` | 582-584 | Type guard |
+| `getCascadePosition` | 589-591 | Cascade position |
+| `canCauseErrors` | 596-601 | Upstream→downstream relationship |
+| `getDownstreamComponents` | 606-609 | Get downstream components |
+| `getUpstreamComponents` | 614-617 | Get upstream components |
+| `summarizeBottleneck` | 622-637 | Summary string |
 
 ---
 
-## 의존 관계
+## Key Functions
+
+| Function | Lines | Complexity | Purpose |
+|----------|-------|------------|---------|
+| `analyzeBottleneck` | 169-212 | O(n×c) | Full analysis |
+| `calculateComponentStats` | 217-261 | O(n) | Statistics aggregation |
+| `buildEvidence` | 266-293 | O(c×e) | Evidence building |
+| `analyzeErrorPatterns` | 302-316 | O(e) | Pattern analysis |
+| `findCooccurringErrors` | 374-407 | O(n) | Co-occurring errors |
+| `analyzeCascadingErrors` | 419-454 | O(c²) | Cascade analysis |
+| `calculateImprovementTrend` | 555-573 | O(n) | Trend analysis |
+| `generateRecommendation` | 503-540 | O(c) | Recommendation generation |
+
+---
+
+## Dependencies
 
 ```
 bottleneck.ts
   │
   ├──> types.ts
-  │      ComponentType 임포트
+  │      ComponentType import
   │
   ├──> component-vectors.ts
-  │      컴포넌트별 오류 추적에 활용
+  │      Used for component-specific error tracking
   │
   └──> Services:
-       ├── scoring-update.service (오류 데이터 수집)
-       ├── state-priority.service (병목 기반 우선순위)
-       └── analytics.service (병목 시각화)
+       ├── scoring-update.service (error data collection)
+       ├── state-priority.service (bottleneck-based priority)
+       └── analytics.service (bottleneck visualization)
 ```
 
 ---
 
-## 학술적 기반
+## Academic Foundation
 
 - Levelt, W.J.M. (1989). *Speaking: From Intention to Articulation*. MIT Press
 - Anderson, J.R. (1983). *The Architecture of Cognition*. Harvard University Press

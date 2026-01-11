@@ -5,37 +5,37 @@
 
 ---
 
-## 목적
+## Purpose
 
-컴포넌트 전제조건 체인 관리. 언어 컴포넌트 간 계층적 의존성 (PHON → MORPH → LEX → SYNT → PRAG) 추적.
+Manages component prerequisite chains. Tracks hierarchical dependencies between language components (PHON → MORPH → LEX → SYNT → PRAG).
 
-**핵심 원리**: 하위 컴포넌트가 자동화(threshold stability 도달)되어야 상위 컴포넌트 학습 효과적.
+**Core Principle**: Lower components must be automated (reach threshold stability) for effective learning of higher components.
 
 ---
 
-## 이론적 기반
+## Theoretical Foundation
 
 ### Processability Theory (Pienemann, 1998, 2005)
 
-언어 처리 절차는 계층적으로 발달. 하위 절차 없이 상위 절차 불가.
+Language processing procedures develop hierarchically. Higher procedures impossible without lower ones.
 
 ```
 PHON → MORPH → LEX → SYNT → PRAG
-(발음)  (형태)   (어휘)  (통사)  (화용)
+(phonology) (morphology) (lexicon) (syntax) (pragmatics)
 ```
 
 ### Skill Acquisition Theory / ACT-R (Anderson, 1982, 1993)
 
-기술 습득의 3단계:
-1. **Cognitive**: 선언적 지식
-2. **Associative**: 절차화 시작
-3. **Autonomous**: 자동화 완료
+Three stages of skill acquisition:
+1. **Cognitive**: Declarative knowledge
+2. **Associative**: Proceduralization begins
+3. **Autonomous**: Automation complete
 
-하위 컴포넌트의 자동화가 상위 컴포넌트의 인지 자원을 확보.
+Automation of lower components frees cognitive resources for higher components.
 
 ### Levelt's Speech Production Model (1999)
 
-발화 산출은 개념화 → 형식화 → 조음의 순서. 각 단계는 이전 단계의 출력에 의존.
+Speech production follows: conceptualization → formulation → articulation. Each stage depends on output from the previous stage.
 
 ---
 
@@ -54,13 +54,13 @@ COMPONENT_SUPPORTS: Record<ComponentCode, ComponentCode[]> = {
 };
 ```
 
-| 컴포넌트 | 전제조건 | 지원 대상 |
-|---------|---------|----------|
-| PHON | 없음 | MORPH, LEX |
+| Component | Prerequisites | Supports |
+|-----------|---------------|----------|
+| PHON | None | MORPH, LEX |
 | MORPH | PHON | LEX, SYNT |
 | LEX | PHON, MORPH | SYNT, PRAG |
 | SYNT | MORPH, LEX | PRAG |
-| PRAG | LEX, SYNT | 없음 |
+| PRAG | LEX, SYNT | None |
 
 ---
 
@@ -68,19 +68,19 @@ COMPONENT_SUPPORTS: Record<ComponentCode, ComponentCode[]> = {
 
 ```typescript
 // lines 194-259
-normalizedStability = min(fsrsStability / 30, 1);  // 30일 = 1.0
+normalizedStability = min(fsrsStability / 30, 1);  // 30 days = 1.0
 
-// 컴포넌트 자동화 판정
+// Component automation determination
 isAutomated = automationRatio >= 0.7 && normalizedAutomation >= requiredThreshold;
 ```
 
-| 컴포넌트 | Automation Threshold | 의미 |
-|---------|---------------------|------|
-| PHON | 0.3 | 10일 안정성 |
-| MORPH | 0.4 | 12일 안정성 |
-| LEX | 0.5 | 15일 안정성 |
-| SYNT | 0.6 | 18일 안정성 |
-| PRAG | 0.7 | 21일 안정성 |
+| Component | Automation Threshold | Meaning |
+|-----------|---------------------|---------|
+| PHON | 0.3 | 10-day stability |
+| MORPH | 0.4 | 12-day stability |
+| LEX | 0.5 | 15-day stability |
+| SYNT | 0.6 | 18-day stability |
+| PRAG | 0.7 | 21-day stability |
 
 ---
 
@@ -103,11 +103,11 @@ interface PrerequisiteStatus {
 
 ### Unlock Status
 
-| 상태 | 조건 | Readiness Score |
-|------|------|-----------------|
-| fully_unlocked | 모든 전제조건 충족 | 0.7 - 1.0 |
-| partially_unlocked | 일부 전제조건 충족 | 0.3 - 0.7 |
-| locked | 전제조건 미충족 | 0 |
+| Status | Condition | Readiness Score |
+|--------|-----------|-----------------|
+| fully_unlocked | All prerequisites met | 0.7 - 1.0 |
+| partially_unlocked | Some prerequisites met | 0.3 - 0.7 |
+| locked | Prerequisites not met | 0 |
 
 ---
 
@@ -129,17 +129,17 @@ interface ObjectLearningStrategy {
 }
 ```
 
-### Priority 계산
+### Priority Calculation
 
 ```typescript
 if (!prerequisiteStatus.allSatisfied) {
-  priority = 30;  // 전제조건 미충족 - 낮은 우선순위
+  priority = 30;  // Prerequisites not met - low priority
 } else if (automationLevel < automationThreshold) {
-  priority = 70 + (1 - automationLevel) × 30;  // 자동화 필요 - 높은 우선순위
+  priority = 70 + (1 - automationLevel) × 30;  // Automation needed - high priority
 } else if (supportsComponents.length > 0) {
-  priority = 50;  // 상위 컴포넌트 지원 - 중간 우선순위
+  priority = 50;  // Supporting higher components - medium priority
 } else {
-  priority = 40;  // 확장 준비 완료
+  priority = 40;  // Ready for expansion
 }
 ```
 
@@ -158,11 +158,11 @@ interface ComponentRecommendation {
 }
 ```
 
-| Focus Type | 조건 | 행동 |
-|------------|------|------|
-| introduce | objectCount === 0 | 첫 항목 도입 |
-| stabilize | !isAutomated | 안정화 훈련 |
-| expand | isAutomated | Usage Space 확장 |
+| Focus Type | Condition | Action |
+|------------|-----------|--------|
+| introduce | objectCount === 0 | Introduce first item |
+| stabilize | !isAutomated | Stabilization training |
+| expand | isAutomated | Usage Space expansion |
 
 ---
 
@@ -170,25 +170,25 @@ interface ComponentRecommendation {
 
 ```typescript
 // lines 462-542
-// 객체가 상위 컴포넌트를 얼마나 지원하는지 계산
+// Calculate how much an object supports higher components
 contributionScore = normalizedAutomation / prereqConfig.automationThreshold;
 ```
 
-**용도**: 하위 컴포넌트 객체의 학습 우선순위 결정시, 상위 컴포넌트 unlock에 기여하는 정도 반영.
+**Purpose**: When determining learning priority for lower component objects, reflects contribution to unlocking higher components.
 
 ---
 
-## 의존 관계
+## Dependencies
 
-```
+```text
 component-prerequisite.service.ts
   │
   ├──> types.ts (COMPONENT_PREREQUISITES)
   │
-  ├──> prisma.ts (DB 접근)
+  ├──> prisma.ts (DB access)
   │
-  └──> 소비자:
-       ├── state-priority.service (우선순위 계산)
-       ├── task-generation.service (학습 전략)
-       └── IPC handlers (잠금 해제 상태 표시)
+  └──> Consumers:
+       ├── state-priority.service (priority calculation)
+       ├── task-generation.service (learning strategy)
+       └── IPC handlers (unlock status display)
 ```

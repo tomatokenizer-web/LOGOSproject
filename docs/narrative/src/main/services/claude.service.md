@@ -5,51 +5,51 @@
 
 ---
 
-## 목적
+## Purpose
 
-Claude API와의 모든 상호작용을 처리. 콘텐츠 생성, 오류 분석, 적응형 힌트 제공.
+Handles all interactions with the Claude API. Content generation, error analysis, and adaptive hint provision.
 
-**주요 기능**:
-- 온라인 모드: 전체 Claude API 통합
-- 오프라인 폴백: API 불가시 템플릿 기반 생성
-- 응답 캐싱: 반복 요청에 대한 API 호출 감소
-- 우아한 성능 저하: API 오류시 자동 폴백
-
----
-
-## 핵심 기능
-
-### 콘텐츠 생성
-
-| 함수 | 용도 |
-|------|------|
-| `generateContent(request)` | 연습문제, 설명, 예문 생성 |
-| `generateExercise(content, config)` | 맞춤형 연습문제 생성 |
-| `generateExplanation(content, config)` | 문법/어휘 설명 생성 |
-
-### 오류 분석
-
-| 함수 | 용도 |
-|------|------|
-| `analyzeError(request)` | 학습자 오류 분석 및 분류 |
-| `categorizeError(response, expected)` | PHON/MORPH/LEX/SYNT/PRAG 분류 |
-
-### 힌트 생성
-
-| 함수 | 용도 |
-|------|------|
-| `generateHint(request)` | 레벨별 적응형 힌트 생성 |
+**Key Features**:
+- Online mode: Full Claude API integration
+- Offline fallback: Template-based generation when API unavailable
+- Response caching: Reduces API calls for repeated requests
+- Graceful degradation: Automatic fallback on API errors
 
 ---
 
-## 캐시 시스템
+## Core Functions
 
-### ContentCache 클래스 (lines 93-150)
+### Content Generation
+
+| Function | Purpose |
+|----------|---------|
+| `generateContent(request)` | Generate exercises, explanations, example sentences |
+| `generateExercise(content, config)` | Generate customized exercises |
+| `generateExplanation(content, config)` | Generate grammar/vocabulary explanations |
+
+### Error Analysis
+
+| Function | Purpose |
+|----------|---------|
+| `analyzeError(request)` | Analyze and classify learner errors |
+| `categorizeError(response, expected)` | Classify as PHON/MORPH/LEX/SYNT/PRAG |
+
+### Hint Generation
+
+| Function | Purpose |
+|----------|---------|
+| `generateHint(request)` | Generate level-appropriate adaptive hints |
+
+---
+
+## Cache System
+
+### ContentCache Class (lines 93-150)
 
 ```typescript
 class ContentCache {
   private cache: Map<string, CacheEntry<unknown>> = new Map();
-  private defaultTTL: number = 30 * 60 * 1000;  // 30분
+  private defaultTTL: number = 30 * 60 * 1000;  // 30 minutes
 
   generateKey(prefix: string, params: Record<string, unknown>): string;
   get<T>(key: string): T | null;
@@ -58,37 +58,37 @@ class ContentCache {
 }
 ```
 
-**캐시 전략**:
-- TTL 기반 만료
-- 요청 파라미터 기반 키 생성
-- 자동 만료 항목 정리
+**Cache Strategy**:
+- TTL-based expiration
+- Key generation based on request parameters
+- Automatic cleanup of expired entries
 
 ---
 
-## 의존 관계
+## Dependencies
 
 ```
 claude.service.ts
   │
   ├──> @anthropic-ai/sdk (Claude API SDK)
   │
-  ├──> offline-queue.service.ts (오프라인 큐잉)
+  ├──> offline-queue.service.ts (offline queuing)
   │
-  └──> 소비자:
-       ├── task-generation.service (콘텐츠 생성)
-       ├── scoring-update.service (오류 분석)
-       └── IPC handlers (힌트 요청)
+  └──> Consumers:
+       ├── task-generation.service (content generation)
+       ├── scoring-update.service (error analysis)
+       └── IPC handlers (hint requests)
 ```
 
 ---
 
-## 오프라인 폴백
+## Offline Fallback
 
-API 불가시 템플릿 기반 콘텐츠 생성:
+Template-based content generation when API unavailable:
 
-| 요청 유형 | 폴백 동작 |
-|----------|----------|
-| exercise | 사전 정의 템플릿 사용 |
-| explanation | 기본 문법 규칙 반환 |
-| hint | 점진적 공개 패턴 사용 |
-| error_analysis | 레벤슈타인 기반 분류 |
+| Request Type | Fallback Behavior |
+|--------------|-------------------|
+| exercise | Use predefined templates |
+| explanation | Return basic grammar rules |
+| hint | Use progressive disclosure pattern |
+| error_analysis | Levenshtein-based classification |
