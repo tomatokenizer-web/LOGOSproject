@@ -12,7 +12,7 @@ This module exists to provide differentiated evaluation criteria for each of the
 
 **Business Need**: Learners need specific, actionable feedback about which aspects of language they should focus on. A generic "70% correct" score tells them nothing about whether to study vocabulary, grammar, or pronunciation. This module powers the diagnostic feedback that helps learners understand their strengths and weaknesses across different language dimensions.
 
-**User Need**: When a learner makes an error, they need to know not just that they were wrong, but WHY they were wrong and WHAT specifically to practice. A vocabulary error ("wrong word") requires different remediation than a grammar error ("wrong form") even if both produce incorrect responses.
+**User Need**: When a learner makes an error, they need to know not just that they were wrong, but WHY they wer1e wrong and WHAT specifically to practice. A vocabulary error ("wrong word") requires different remediation than a grammar error ("wrong form") even if both produce incorrect responses.
 
 **When Used**:
 - After every learner response during practice sessions
